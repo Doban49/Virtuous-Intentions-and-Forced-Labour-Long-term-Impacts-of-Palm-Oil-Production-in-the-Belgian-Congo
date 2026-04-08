@@ -1,0 +1,82 @@
+// Main RDD Plots DHS Unco (30 km Bandwidth)
+// version 16.1
+clear
+clear matrix 
+set more off
+cd "...\Replication Package Palm Oil Concessions Belgian Congo\Graphs"
+capture log close
+log using "Making DHS plots Unco 30 km", replace
+
+
+
+// Loading and adapting Unco_DS_final dataset
+import delimited "...\Replication Package Palm Oil Concessions Belgian Congo\Datasets\Unco_DS_final.csv", clear
+describe
+
+foreach x of varlist highest_year_education total_years_education literacy literacy_adjusted heightage_percentile heightage_percentile_adj {
+    replace `x' = "" if (`x' == "NA")
+	}
+
+destring highest_year_education total_years_education literacy literacy_adjusted heightage_percentile heightage_percentile_adj, replace
+
+
+
+// Defining labels
+
+label var dist_concess_bord_cen_km "Distance to Concession Border (km)" 
+ 
+label var total_years_education  "Total Years of Education"
+label var literacy_adjusted "Literacy"
+label var wealth_index "Wealth Index"
+label var log_wealth_index_factor_score "Log(Wealth Index Factor Score )"
+
+
+
+// Defining locals
+
+
+local cluster_level "dhs_cluster_adj"  
+local fixed_bw "30" // bandwidth choice of 30 km. 
+local controls gender age dummy_survey_year brabanta elisabetha flandria lusanga
+
+
+// Making RDD plots
+
+
+// RD plot for the first 4 variables
+foreach dep_var of varlist wealth_index log_wealth_index_factor_score total_years_education literacy_adjusted {
+cmogram `dep_var' dist_concess_bord_cen_km if abs(dist_concess_bord_cen_km) < 30, cut(0) histopts(bin(30)) scatter line(0) lfit  lfitci ///
+	leg graphopts(legend(label(1 "Outside Concession") label(2 "Inside Concession") row(2)) graphregion(color(white)) bgcolor(white) yla(, nogrid labsize(small)) xlab(,labsize(small))) ///
+		lfitopts(estopts(cluster(`cluster_level')))  controls(`controls') 
+		graph export "...\Replication Package Palm Oil Concessions Belgian Congo\Graphs\`dep_var'_RDPlot_30km.pdf", replace
+	
+}
+
+//RD plot for Height/Age Percentile for women 
+
+local controls_women age dummy_survey_year brabanta elisabetha flandria lusanga
+label var dist_concess_bord_cen_km "Distance to Concession Border (km)" 
+label var heightage_percentile_adj "Height/Age Percentile for Women"
+
+cmogram heightage_percentile_adj dist_concess_bord_cen_km if abs(dist_concess_bord_cen_km) < 30, cut(0) histopts(bin(30)) scatter line(0) lfit  lfitci ///
+	leg graphopts(legend(label(1 "Outside Concession") label(2 "Inside Concession") row(2)) graphregion(color(white)) bgcolor(white) yla(, nogrid labsize(small)) xlab(,labsize(small))) ///
+		lfitopts(estopts(cluster(`cluster_level')))  controls(`controls_women') 
+		graph export "...\Replication Package Palm Oil Concessions Belgian Congo\Graphs\heightage_percentile_women_adj_RDPlot_30km.pdf", replace
+
+
+//RD plot for Height/Age Percentile for children
+
+import delimited "...\Replication Package Palm Oil Concessions Belgian Congo\Datasets\DHS_Children_final.csv", clear
+describe
+
+destring heightage_percentile_adj, replace
+
+local controls_children child_gender child_age_months dummy_survey_year brabanta elisabetha flandria lusanga
+
+label var dist_concess_bord_cen_km "Distance to Concession Border (km)" 
+label var heightage_percentile_adj "Height/Age Percentile for Children"
+
+cmogram heightage_percentile_adj dist_concess_bord_cen_km if abs(dist_concess_bord_cen_km) < 30, cut(0) histopts(bin(30)) scatter line(0) lfit  lfitci ///
+	leg graphopts(legend(label(1 "Outside Concession") label(2 "Inside Concession") row(2)) graphregion(color(white)) bgcolor(white) yla(, nogrid labsize(small)) xlab(,labsize(small))) ///
+		lfitopts(estopts(cluster(`cluster_level')))  controls(`controls_children') 
+		graph export "...\Replication Package Palm Oil Concessions Belgian Congo\Graphs\heightage_percentile_adj_children_RDPlot_30km.pdf", replace
