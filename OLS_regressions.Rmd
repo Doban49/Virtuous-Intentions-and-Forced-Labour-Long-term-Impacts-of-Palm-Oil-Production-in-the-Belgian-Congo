@@ -1,0 +1,453 @@
+---
+title: "Regression tables"
+author: "DB"
+date: "2023-06-20"
+output: html_document
+---
+
+
+```{r}
+library(modelsummary)
+library(kableExtra)
+library(gt)
+library(tibble)
+library(dplyr)
+library(estimatr)
+library(rdrobust)
+library(rddtools)
+library(haven)
+library(Hmisc)
+library(tidyverse)
+library(stargazer)
+```
+
+```{r}
+rm(list = ls())
+```
+
+
+
+```{r}
+Unco_DS_final<- read.csv(".../Replication Package Palm Oil Concessions Belgian Congo/Datasets/Unco_DS_final.csv", header=TRUE)
+
+
+#Creating the subsets
+Unco_DS_final_60km <- Unco_DS_final %>% 
+  filter(dist_concess_bord < 60000)
+
+
+DHS_Children_final <- read.csv('.../Replication Package Palm Oil Concessions Belgian Congo/Datasets/DHS_Children_final.csv', header=TRUE)
+
+
+#Creating the subsets
+DHS_Children_final_60km <- DHS_Children_final %>% 
+  filter(dist_concess_bord < 60000)
+
+```
+
+
+
+```{r}
+####################################################################################################################
+#Running OLS regressions for Wealth Index 
+####################################################################################################################
+
+
+#OLS 1
+#Simple OLS regression.
+regtable_Wealth_Index190_ro_clu <- lm_robust(Wealth_Index ~ within.con + dist.cenpo_km + gender + age +  age_square + Survey_Year , data = Unco_DS_final_60km, clusters = DHS_Cluster_adj)
+summary (regtable_Wealth_Index190_ro_clu)
+
+  
+#OLS 2
+#Including more control variables.
+reg_table_Wealth_Index190_ro_morecon      <-      lm_robust(Wealth_Index ~ within.con + dist.cenpo_km + gender + age +  age_square + Survey_Year + UN_Population_Density_2015 + BUILT_Population_2014 + Gross_Cell_Production + Mean_Temperature_2015 + prec_WCD_mean +  prec_WCD_std   + Proximity_to_National_Borders + dist_kin + ALT + Land_Suitability + ruggedness_mean + malaria_suit + tsi_grid_tsi + road_density + Miss_1924 + atlantic_all_years,  data = Unco_DS_final_60km, clusters = DHS_Cluster_adj)
+summary (reg_table_Wealth_Index190_ro_morecon)
+
+#OLS 3
+#Including concession fixed effects.
+regtable_Wealth_Index190_ro_clu_fe <- lm_robust(Wealth_Index ~ within.con + dist.cenpo_km + gender + age +  age_square + Survey_Year , data = Unco_DS_final_60km, clusters = DHS_Cluster_adj, fixed_effects = ~ Area_Con)
+summary (regtable_Wealth_Index190_ro_clu_fe)
+
+#OLS4
+#Including more control variables and concession fixed effects.
+regtable_Wealth_Index190_ro_clu_fe_morecon <- lm_robust(Wealth_Index ~ within.con + dist.cenpo_km  + gender + age +  age_square + Survey_Year +  UN_Population_Density_2015 + BUILT_Population_2014 + Gross_Cell_Production + Mean_Temperature_2015 + prec_WCD_mean +  prec_WCD_std   + Proximity_to_National_Borders + dist_kin + ALT + Land_Suitability + ruggedness_mean + malaria_suit + tsi_grid_tsi + road_density + Miss_1924 + atlantic_all_years,  data = Unco_DS_final_60km, clusters = DHS_Cluster_adj, fixed_effects = ~ Area_Con)
+summary (regtable_Wealth_Index190_ro_clu_fe_morecon)
+
+
+#OLS5
+#Including more control variables and concession fixed effects. Now for the entire sample. 
+regtable_Wealth_Index190_ro_clu_fe_morecon_fulldata <- lm_robust(Wealth_Index ~ within.con + dist.cenpo_km  + gender + age +  age_square + Survey_Year +  UN_Population_Density_2015 + BUILT_Population_2014 + Gross_Cell_Production + Mean_Temperature_2015 + prec_WCD_mean +  prec_WCD_std   + Proximity_to_National_Borders + dist_kin + ALT + Land_Suitability + ruggedness_mean + malaria_suit + tsi_grid_tsi + road_density + Miss_1924 + atlantic_all_years, data = Unco_DS_final, clusters = DHS_Cluster_adj, fixed_effects = ~ Area_Con)
+summary (regtable_Wealth_Index190_ro_clu_fe_morecon_fulldata)
+
+
+mean(Unco_DS_final_60km$Wealth_Index)
+mean(Unco_DS_final$Wealth_Index)
+
+
+Var_Structure_OLS <- c('(Intercept)' = 'Intercept',
+        'within.con'    = 'Inside Concession',
+        'dist.cenpo_km'    = 'Distance Concession Center',
+        'gender' = 'Gender',
+        'age'    = 'Age',
+        'age_square'    = 'Age squared',
+        'Survey_Year'    = 'Survey Year',
+        'UN_Population_Density_2015'    = 'Population Density 2015',
+        'BUILT_Population_2014'    = 'Level of Urbanization',
+        'Land_Suitability'    = 'Land Suitability',
+        'Miss_1924'    = 'Missionary Stations 1924',
+        'atlantic_all_years' = 'Number Enslaved (in 1000)',
+        'tsi_grid_tsi' = 'TseTse Fly Suitability',
+        'road_density'  = 'Road Density')
+
+OLS_default_rows <- tribble( ~term, ~OLS,  ~OLS, ~OLS, ~OLS, ~OLS,
+                #'Std.Errors','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster',
+                'Bandwidth in km', '60', '60', '60', '60','full',
+                'Fixed Effects', '-', '-', 'X', 'X','X',
+                'Add. Covariats', '-', 'X','-', 'X','X',
+                'Clusters', '69', '69', '69', '69','155')
+attr(OLS_default_rows, 'position') <- c(30,31,32,33)
+
+#Adding Mean Dep. Var.
+glance_custom.lm_robust <- function(x, ...) {
+  dv <- insight::get_response(x)
+  dv_mean <- sprintf("%.3f", mean(dv, na.rm = TRUE))
+  dv_sd <- sprintf("%.3f", sd(dv, na.rm = TRUE))
+  data.table::data.table(`Mean Dep. Var.` = dv_mean, `SD Dep. Var.` = dv_sd)
+  
+}
+
+
+
+# Adjusting the robust standard erros since the default standard errors are different
+tidy_custom.lm_robust <- function(x, ...) {
+    s <- summary(x)$coefficients
+    out <- data.frame(
+      term = row.names(s),
+      
+      estimate = s[,1],
+      std.error = s[,2],
+      p.value = s[,4])
+    return(out)
+}
+
+gm <- tibble::tribble(
+  ~raw,        ~clean,          ~fmt,
+  "nobs",      "Num.Obs.",             0,
+  "Bandwidth", "Bandwidth", 2,
+  "Mean Dep. Var.", "Mean Dep. Var.", 3,
+  "SD Dep. Var.", "SD Dep. Var.", 3)
+
+
+Model_Wealth_Index_OLS <- list("OLS1" = regtable_Wealth_Index190_ro_clu, "OLS2" = reg_table_Wealth_Index190_ro_morecon, "OLS3" = regtable_Wealth_Index190_ro_clu_fe, "OLS4" = regtable_Wealth_Index190_ro_clu_fe_morecon, "OLS5" = regtable_Wealth_Index190_ro_clu_fe_morecon_fulldata)
+
+Zs_Olsreg_Wealth_Index <- modelsummary(Model_Wealth_Index_OLS,  fmt = 4, title = "OLS Regression for Wealth Index", stars = TRUE, coef_map = Var_Structure_OLS,  gof_map = gm,  add_rows = OLS_default_rows, output = "latex") %>%  kable_styling(latex_options = c("scale_down","striped","hold_position")) %>%
+footnote(general = "Notes:", threeparttable = T)
+
+save_kable(Zs_Olsreg_Wealth_Index, file = "Wealth_Index_OLS_fin.tex")
+
+
+modelsummary(Model_Wealth_Index_OLS,  fmt = 4, title = "Wealth Index", stars = TRUE, notes = list("Test for note1","Text of the second note."), coef_map = Var_Structure_OLS,  gof_map = gm, add_rows = OLS_default_rows, output = "gt")
+
+```
+
+
+
+
+```{r}
+
+####################################################################################################################
+#Running OLS regressions for Log(Wealth Factor Score)
+####################################################################################################################
+
+
+#OLS 1
+#Simple OLS regression.
+regtable_Log_Wealth_Score_191_ro_clu <- lm_robust(Log_Wealth_Index_Factor_Score ~ within.con + dist.cenpo_km + gender + age +  age_square + Survey_Year , data = Unco_DS_final_60km, clusters = DHS_Cluster_adj)
+summary (regtable_Log_Wealth_Score_191_ro_clu)
+#R2 ist kleiner als oben. 
+  
+#OLS 2
+#Including more control variables.
+regtable_Log_Wealth_Score_FS_191_ro_clu_moreco      <-      lm_robust(Log_Wealth_Index_Factor_Score ~ within.con + dist.cenpo_km + gender + age +  age_square + Survey_Year + UN_Population_Density_2015 + BUILT_Population_2014 + Gross_Cell_Production + Mean_Temperature_2015 + prec_WCD_mean +  prec_WCD_std   + Proximity_to_National_Borders + dist_kin + ALT + Land_Suitability + ruggedness_mean + malaria_suit + tsi_grid_tsi + road_density + Miss_1924 + atlantic_all_years,  data = Unco_DS_final_60km, clusters = DHS_Cluster_adj)
+summary (regtable_Log_Wealth_Score_FS_191_ro_clu_moreco)
+
+#OLS 3
+#Including concession fixed effects.
+regtable_Log_Wealth_Score_FS_191_ro_clu_fe <- lm_robust(Log_Wealth_Index_Factor_Score ~ within.con + dist.cenpo_km + gender + age +  age_square + Survey_Year , data = Unco_DS_final_60km, clusters = DHS_Cluster_adj, fixed_effects = ~ Area_Con)
+summary (regtable_Log_Wealth_Score_FS_191_ro_clu_fe)
+
+#OLS4
+#Including more control variables and concession fixed effects.
+regtable_Log_Wealth_Score_FS_191_ro_clu_fe_moreco <- lm_robust(Log_Wealth_Index_Factor_Score ~ within.con + dist.cenpo_km  + gender + age +  age_square + Survey_Year +  UN_Population_Density_2015 + BUILT_Population_2014 + Gross_Cell_Production + Mean_Temperature_2015 + prec_WCD_mean +  prec_WCD_std   + Proximity_to_National_Borders + dist_kin + ALT + Land_Suitability + ruggedness_mean + malaria_suit + tsi_grid_tsi + road_density + Miss_1924 + atlantic_all_years,  data = Unco_DS_final_60km, clusters = DHS_Cluster_adj, fixed_effects = ~ Area_Con)
+summary (regtable_Log_Wealth_Score_FS_191_ro_clu_fe_moreco)
+
+
+#OLS5
+#Including more control variables and concession fixed effects. Now for the entire sample. 
+regtable_Log_Wealth_Score_FS_191_ro_clu_fe_moreco_fulldata <- lm_robust(Log_Wealth_Index_Factor_Score ~ within.con + dist.cenpo_km  + gender + age +  age_square + Survey_Year +  UN_Population_Density_2015 + BUILT_Population_2014 + Gross_Cell_Production + Mean_Temperature_2015 + prec_WCD_mean +  prec_WCD_std   + Proximity_to_National_Borders + dist_kin + ALT + Land_Suitability + ruggedness_mean + malaria_suit + tsi_grid_tsi + road_density + Miss_1924 + atlantic_all_years, data = Unco_DS_final, clusters = DHS_Cluster_adj, fixed_effects = ~ Area_Con)
+summary (regtable_Log_Wealth_Score_FS_191_ro_clu_fe_moreco_fulldata)
+
+
+
+Model_Wealth_Index_OLS <- list("OLS1" = regtable_Log_Wealth_Score_191_ro_clu, "OLS2" = regtable_Log_Wealth_Score_FS_191_ro_clu_moreco, "OLS3" = regtable_Log_Wealth_Score_FS_191_ro_clu_fe, "OLS4" = regtable_Log_Wealth_Score_FS_191_ro_clu_fe_moreco, "OLS5" = regtable_Log_Wealth_Score_FS_191_ro_clu_fe_moreco_fulldata)
+
+Zs_Olsreg_Wealth_Score <-modelsummary(Model_Wealth_Index_OLS,  fmt = 4, title = "OLS Regressions for Log(Wealth Factor Score)",  stars = TRUE, coef_map = Var_Structure_OLS,  gof_map = gm,  add_rows = OLS_default_rows, output = "latex") %>%  kable_styling(latex_options = c("scale_down","striped","hold_position")) %>%
+footnote(general = "Notes:", threeparttable = T)
+
+save_kable(Zs_Olsreg_Wealth_Score, file = "Wealth_Score_OLS_fin.tex")
+
+
+modelsummary(Model_Wealth_Index_OLS,  fmt = 4, title = "Log Wealth Score", stars = TRUE,  gof_map = gm, notes = list("Test for note1","Text of the second note."), coef_map = Var_Structure_OLS, add_rows = OLS_default_rows, output = "gt")
+
+
+
+
+```
+
+
+
+```{r}
+####################################################################################################################
+#Running OLS regressions for Years of Education
+####################################################################################################################
+
+
+#OLS 1
+#Simple OLS regression.
+regtable_Total_Years_Education_108_ro_clu <- lm_robust(Total_Years_Education ~ within.con + dist.cenpo_km + gender + age +  age_square + Survey_Year , data = Unco_DS_final_60km, clusters = DHS_Cluster_adj)
+summary (regtable_Total_Years_Education_108_ro_clu)
+#R2 ist kleiner als oben. 
+  
+#OLS 2
+#Including more control variables.
+regtable_Total_Years_Education_108_ro_clu_moreco      <-      lm_robust(Total_Years_Education ~ within.con + dist.cenpo_km + gender + age +  age_square + Survey_Year + UN_Population_Density_2015 + BUILT_Population_2014 + Gross_Cell_Production + Mean_Temperature_2015 + prec_WCD_mean +  prec_WCD_std   + Proximity_to_National_Borders + dist_kin + ALT + Land_Suitability + ruggedness_mean + malaria_suit + tsi_grid_tsi + road_density + Miss_1924 + atlantic_all_years,  data = Unco_DS_final_60km, clusters = DHS_Cluster_adj)
+summary (regtable_Total_Years_Education_108_ro_clu_moreco)
+
+#OLS 3
+#Including concession fixed effects.
+regtable_Total_Years_Education_108_ro_clu_fe <- lm_robust(Total_Years_Education ~ within.con + dist.cenpo_km + gender + age +  age_square + Survey_Year , data = Unco_DS_final_60km, clusters = DHS_Cluster_adj, fixed_effects = ~ Area_Con)
+summary (regtable_Total_Years_Education_108_ro_clu_fe)
+
+#OLS4
+#Including more control variables and concession fixed effects.
+regtable_Total_Years_Education_108_ro_clu_fe_moreco <- lm_robust(Total_Years_Education ~ within.con + dist.cenpo_km  + gender + age +  age_square + Survey_Year +  UN_Population_Density_2015 + BUILT_Population_2014 + Gross_Cell_Production + Mean_Temperature_2015 + prec_WCD_mean +  prec_WCD_std   + Proximity_to_National_Borders + dist_kin + ALT + Land_Suitability + ruggedness_mean + malaria_suit + tsi_grid_tsi + road_density + Miss_1924 + atlantic_all_years,  data = Unco_DS_final_60km, clusters = DHS_Cluster_adj, fixed_effects = ~ Area_Con)
+summary (regtable_Total_Years_Education_108_ro_clu_fe_moreco)
+
+
+#OLS5
+#Including more control variables and concession fixed effects. Now for the entire sample. 
+regtable_Total_Years_Education_108_ro_clu_fe_moreco_fulldata <- lm_robust(Total_Years_Education ~ within.con + dist.cenpo_km  + gender + age +  age_square + Survey_Year +  UN_Population_Density_2015 + BUILT_Population_2014 + Gross_Cell_Production + Mean_Temperature_2015 + prec_WCD_mean +  prec_WCD_std   + Proximity_to_National_Borders + dist_kin + ALT + Land_Suitability + ruggedness_mean + malaria_suit + tsi_grid_tsi + road_density + Miss_1924 + atlantic_all_years, data = Unco_DS_final, clusters = DHS_Cluster_adj, fixed_effects = ~ Area_Con)
+summary (regtable_Total_Years_Education_108_ro_clu_fe_moreco_fulldata)
+
+
+
+Model_Total_Years_Education_OLS <- list("OLS1" = regtable_Total_Years_Education_108_ro_clu, "OLS2" = regtable_Total_Years_Education_108_ro_clu_moreco, "OLS3" = regtable_Total_Years_Education_108_ro_clu_fe, "OLS4" = regtable_Total_Years_Education_108_ro_clu_fe_moreco, "OLS5" = regtable_Total_Years_Education_108_ro_clu_fe_moreco_fulldata)
+
+Zs_Olsreg_Total_Years_Education <-modelsummary(Model_Total_Years_Education_OLS,  fmt = 4, title = "OLS Regressions for Years of Education", stars = TRUE, coef_map = Var_Structure_OLS,  gof_map = gm,  add_rows = OLS_default_rows, output = "latex") %>%  kable_styling(latex_options = c("scale_down","striped","hold_position")) %>%
+footnote(general = "Notes:", threeparttable = T)
+
+
+save_kable(Zs_Olsreg_Total_Years_Education, file = "Total_Years_Educationx_OLS_fin.tex")
+
+
+modelsummary(Model_Wealth_Index_OLS,  fmt = 4, title = "Total Years of Education", stars = TRUE, gof_map = gm, notes = list("Test for note1","Text of the second note."), coef_map = Var_Structure_OLS, add_rows = OLS_default_rows, output = "gt")
+
+```
+
+
+
+```{r}
+
+####################################################################################################################
+#Running OLS regressions for Literacy
+####################################################################################################################
+
+
+#OLS 1
+#Simple OLS regression.
+regtable_Literacy_adj_155_ro_clu <- lm_robust(Literacy_adjusted ~ within.con + dist.cenpo_km + gender + age +  age_square + Survey_Year , data = Unco_DS_final_60km, clusters = DHS_Cluster_adj)
+summary (regtable_Literacy_adj_155_ro_clu)
+#R2 ist kleiner als oben. 
+  
+#OLS 2
+#Including more control variables.
+regtable_Literacy_adj_155_ro_clu_moreco      <-      lm_robust(Literacy_adjusted ~ within.con + dist.cenpo_km + gender + age +  age_square + Survey_Year + UN_Population_Density_2015 + BUILT_Population_2014 + Gross_Cell_Production + Mean_Temperature_2015 + prec_WCD_mean +  prec_WCD_std   + Proximity_to_National_Borders + dist_kin + ALT + Land_Suitability + ruggedness_mean + malaria_suit + tsi_grid_tsi + road_density + Miss_1924 + atlantic_all_years,  data = Unco_DS_final_60km, clusters = DHS_Cluster_adj)
+summary (regtable_Literacy_adj_155_ro_clu_moreco)
+
+#OLS 3
+#Including concession fixed effects.
+regtable_Literacy_adj_155_ro_clu_fe <- lm_robust(Literacy_adjusted ~ within.con + dist.cenpo_km + gender + age +  age_square + Survey_Year , data = Unco_DS_final_60km, clusters = DHS_Cluster_adj, fixed_effects = ~ Area_Con)
+summary (regtable_Literacy_adj_155_ro_clu_fe)
+
+#OLS4
+#Including more control variables and concession fixed effects.
+regtable_Literacy_adj_155_ro_clu_fe_moreco <- lm_robust(Literacy_adjusted ~ within.con + dist.cenpo_km  + gender + age +  age_square + Survey_Year +  UN_Population_Density_2015 + BUILT_Population_2014 + Gross_Cell_Production + Mean_Temperature_2015 + prec_WCD_mean +  prec_WCD_std   + Proximity_to_National_Borders + dist_kin + ALT + Land_Suitability + ruggedness_mean + malaria_suit + tsi_grid_tsi + road_density + Miss_1924 + atlantic_all_years,  data = Unco_DS_final_60km, clusters = DHS_Cluster_adj, fixed_effects = ~ Area_Con)
+summary (regtable_Literacy_adj_155_ro_clu_fe_moreco)
+
+
+#OLS5
+#Including more control variables and concession fixed effects. Now for the entiree sample. 
+regtable_Literacy_adj_155_ro_clu_fe_moreco_fulldata <- lm_robust(Literacy_adjusted ~ within.con + dist.cenpo_km  + gender + age +  age_square + Survey_Year +  UN_Population_Density_2015 + BUILT_Population_2014 + Gross_Cell_Production + Mean_Temperature_2015 + prec_WCD_mean +  prec_WCD_std   + Proximity_to_National_Borders + dist_kin + ALT + Land_Suitability + ruggedness_mean + malaria_suit + tsi_grid_tsi + road_density + Miss_1924 + atlantic_all_years, data = Unco_DS_final, clusters = DHS_Cluster_adj, fixed_effects = ~ Area_Con)
+summary (regtable_Literacy_adj_155_ro_clu_fe_moreco_fulldata)
+
+
+
+
+Model_Wealth_Index_OLS <- list("OLS1" = regtable_Literacy_adj_155_ro_clu, "OLS2" = regtable_Literacy_adj_155_ro_clu_moreco, "OLS3" = regtable_Literacy_adj_155_ro_clu_fe, "OLS4" = regtable_Literacy_adj_155_ro_clu_fe_moreco, "OLS5" = regtable_Literacy_adj_155_ro_clu_fe_moreco_fulldata)
+
+Zs_Olsreg_Literacy <- modelsummary(Model_Wealth_Index_OLS,  fmt = 4, title = "OLS Regressions for Literacy", stars = TRUE, coef_map = Var_Structure_OLS,  gof_map = gm,  add_rows = OLS_default_rows, output = "latex") %>%  kable_styling(latex_options = c("scale_down","striped","hold_position")) %>% footnote(general = "Notes:", threeparttable = T)
+
+save_kable(Zs_Olsreg_Literacy, file = "Literacy_OLS_fin.tex")
+
+
+modelsummary(Model_Wealth_Index_OLS,  fmt = 4, title = "Literacy", stars = TRUE, gof_map = gm, notes = list("Test for note1","Text of the second note."), coef_map = Var_Structure_OLS, add_rows = OLS_default_rows, output = "gt")
+
+```
+
+
+```{r}
+
+####################################################################################################################
+#Running OLS regressions for Height/Age Percentile of Women
+####################################################################################################################
+
+
+
+#OLS 1
+#Simple OLS regression.
+regtable_Height.Age_Percentile_adj_439_ro_clu <- lm_robust(Height.Age_Percentile_adj ~ within.con + dist.cenpo_km + age +  age_square + Survey_Year , data = Unco_DS_final_60km, clusters = DHS_Cluster_adj)
+summary (regtable_Height.Age_Percentile_adj_439_ro_clu)
+#R2 ist kleiner als oben. 
+  
+#OLS 2
+#Including more control variables.
+regtable_Height.Age_Percentile_adj_439_ro_clu_moreco      <-      lm_robust(Height.Age_Percentile_adj ~ within.con + dist.cenpo_km + age +  age_square + Survey_Year + UN_Population_Density_2015 + BUILT_Population_2014 + Gross_Cell_Production + Mean_Temperature_2015 + prec_WCD_mean +  prec_WCD_std   + Proximity_to_National_Borders + dist_kin + ALT + Land_Suitability + ruggedness_mean + malaria_suit + tsi_grid_tsi + road_density + Miss_1924 + atlantic_all_years,  data = Unco_DS_final_60km, clusters = DHS_Cluster_adj)
+summary (regtable_Height.Age_Percentile_adj_439_ro_clu_moreco)
+
+#OLS 3
+#Including concession fixed effects.
+regtable_Height.Age_Percentile_adj_439_ro_clu_fe <- lm_robust(Height.Age_Percentile_adj ~ within.con + dist.cenpo_km + age +  age_square + Survey_Year , data = Unco_DS_final_60km, clusters = DHS_Cluster_adj, fixed_effects = ~ Area_Con)
+summary (regtable_Height.Age_Percentile_adj_439_ro_clu_fe)
+
+#OLS4
+#Including more control variables and concession fixed effects.
+regtable_Height.Age_Percentile_adj_439_ro_clu_fe_moreco <- lm_robust(Height.Age_Percentile_adj ~ within.con + dist.cenpo_km + age +  age_square + Survey_Year +  UN_Population_Density_2015 + BUILT_Population_2014 + Gross_Cell_Production + Mean_Temperature_2015 + prec_WCD_mean +  prec_WCD_std   + Proximity_to_National_Borders + dist_kin + ALT + Land_Suitability + ruggedness_mean + malaria_suit + tsi_grid_tsi + road_density + Miss_1924 + atlantic_all_years,  data = Unco_DS_final_60km, clusters = DHS_Cluster_adj, fixed_effects = ~ Area_Con)
+summary (regtable_Height.Age_Percentile_adj_439_ro_clu_fe_moreco)
+
+
+#OLS5
+#Including more control variables and concession fixed effects. Now for the entiree sample. 
+regtable_Height.Age_Percentile_adj_439_ro_clu_fe_moreco_fulldata <- lm_robust(Height.Age_Percentile_adj ~ within.con + dist.cenpo_km + age +  age_square + Survey_Year +  UN_Population_Density_2015 + BUILT_Population_2014 + Gross_Cell_Production + Mean_Temperature_2015 + prec_WCD_mean +  prec_WCD_std   + Proximity_to_National_Borders + dist_kin + ALT + Land_Suitability + ruggedness_mean + malaria_suit + tsi_grid_tsi + road_density + Miss_1924 + atlantic_all_years, data = Unco_DS_final, clusters = DHS_Cluster_adj, fixed_effects = ~ Area_Con)
+summary (regtable_Height.Age_Percentile_adj_439_ro_clu_fe_moreco_fulldata)
+
+
+Var_Structure_OLS_rows_Height.Age_Perc <- c('(Intercept)' = 'Intercept',
+        'within.con'    = 'Inside Concession',
+        'dist.cenpo_km'    = 'Distance Concession Center',
+        'age'    = 'Age',
+        'age_square'    = 'Age squared',
+        'Survey_Year'    = 'Survey Year',
+        'UN_Population_Density_2015'    = 'UN Population Density 2015',
+        'BUILT_Population_2014'    = 'Level of Urbanization',
+        'Land_Suitability'    = 'Land Suitability',
+        'Miss_1924'    = 'Num. Missions in 1924',
+        'atlantic_all_years' = 'Number Enslaved (in 1000)',
+        'tsi_grid_tsi' = 'TseTse Fly Suitability',
+        'road_density'  = 'Road Density')
+
+rows_Height.Age_Perc <- tribble( ~term, ~OLS,  ~OLS, ~OLS, ~OLS, ~OLS,
+                'Bandwidth in km', '60', '60', '60', '60','full',
+                'Fixed Effects', '-', '-', 'X', 'X','X',
+                'Add. Covariats', '-', 'X','-', 'X','X',
+                'Clusters', '69', '69', '69', '69','155')
+attr(rows_Height.Age_Perc, 'position') <- c(28,29,30,31)
+
+
+Model_Height_Age_Percentile_Women_OLS <- list("OLS1" = regtable_Height.Age_Percentile_adj_439_ro_clu, "OLS2" = regtable_Height.Age_Percentile_adj_439_ro_clu_moreco, "OLS3" = regtable_Height.Age_Percentile_adj_439_ro_clu_fe, "OLS4" = regtable_Height.Age_Percentile_adj_439_ro_clu_fe_moreco, "OLS5" = regtable_Height.Age_Percentile_adj_439_ro_clu_fe_moreco_fulldata)
+
+Zs_Olsreg_Height_Age_Percentile_Women <- modelsummary(Model_Height_Age_Percentile_Women_OLS,  fmt = 4, title = "OLS Regressions for Height/Age Percentile", stars = TRUE, coef_map = Var_Structure_OLS,  gof_map = gm,  add_rows = rows_Height.Age_Perc, output = "latex") %>%  kable_styling(latex_options = c("scale_down","striped","hold_position")) %>% footnote(general = "Notes:", threeparttable = T)
+
+save_kable(Zs_Olsreg_Height_Age_Percentile_Women, file = "Height_Age_Percentile_Women_OLS_fin.tex")
+
+modelsummary(Model_Height_Age_Percentile_Women_OLS,  fmt = 4, title = "Height/Age Percentile", stars = TRUE, gof_map = gm, notes = list("Test for note1","Text of the second note."), coef_map = Var_Structure_OLS_rows_Height.Age_Perc, add_rows = rows_Height.Age_Perc, output = "gt")
+
+```
+
+
+
+
+
+```{r}
+
+####################################################################################################################
+#Running OLS regressions for Height/Age Percentile of Children
+####################################################################################################################
+
+
+
+#OLS 1
+#Simple OLS regression.
+regtable_Height.Age_Percentile_adj_Children_ro_clu <- lm_robust(Height.Age_Percentile_adj ~ within.con + dist.cenpo_km + Child_gender + Child_Age_months +  age_square + Survey_Year, data = DHS_Children_final_60km, clusters = DHS_Cluster_adj)
+summary (regtable_Height.Age_Percentile_adj_Children_ro_clu)
+#R2 ist kleiner als oben. 
+  
+#OLS 2
+#Including more control variables.
+regtable_Height.Age_Percentile_adj_Children_ro_clu_moreco      <-      lm_robust(Height.Age_Percentile_adj ~ within.con + dist.cenpo_km + Child_gender + Child_Age_months +  age_square + Survey_Year + UN_Population_Density_2015 + BUILT_Population_2014 + Gross_Cell_Production + Mean_Temperature_2015 + prec_WCD_mean +  prec_WCD_std   + Proximity_to_National_Borders + dist_kin + ALT + Land_Suitability + ruggedness_mean + malaria_suit + tsi_grid_tsi + road_density + Miss_1924 + atlantic_all_years,  data = DHS_Children_final_60km, clusters = DHS_Cluster_adj)
+summary (regtable_Height.Age_Percentile_adj_Children_ro_clu_moreco)
+
+#OLS 3
+#Including concession fixed effects.
+regtable_Height.Age_Percentile_adj_Children_ro_clu_fe <- lm_robust(Height.Age_Percentile_adj ~ within.con + dist.cenpo_km + Child_gender + Child_Age_months +  age_square + Survey_Year , data = DHS_Children_final_60km, clusters = DHS_Cluster_adj, fixed_effects = ~ Area_Con)
+summary (regtable_Height.Age_Percentile_adj_Children_ro_clu_fe)
+
+#OLS4
+#Including more control variables and concession fixed effects.
+regtable_Height.Age_Percentile_adj_Children_ro_clu_fe_moreco <- lm_robust(Height.Age_Percentile_adj ~ within.con + dist.cenpo_km  + Child_gender + Child_Age_months +  age_square + Survey_Year +  UN_Population_Density_2015 + BUILT_Population_2014 + Gross_Cell_Production + Mean_Temperature_2015 + prec_WCD_mean +  prec_WCD_std   + Proximity_to_National_Borders + dist_kin + ALT + Land_Suitability + ruggedness_mean + malaria_suit + tsi_grid_tsi + road_density + Miss_1924 + atlantic_all_years,  data = DHS_Children_final_60km, clusters = DHS_Cluster_adj, fixed_effects = ~ Area_Con)
+summary (regtable_Height.Age_Percentile_adj_Children_ro_clu_fe_moreco)
+
+
+#OLS5
+#Including more control variables and concession fixed effects. Now for the entiree sample. 
+regtable_Height.Age_Percentile_adj_Children_ro_clu_fe_moreco_fulldata <- lm_robust(Height.Age_Percentile_adj ~ within.con + dist.cenpo_km  + Child_gender + Child_Age_months +  age_square + Survey_Year +  UN_Population_Density_2015 + BUILT_Population_2014 + Gross_Cell_Production + Mean_Temperature_2015 + prec_WCD_mean +  prec_WCD_std   + Proximity_to_National_Borders + dist_kin + ALT + Land_Suitability + ruggedness_mean + malaria_suit + tsi_grid_tsi + road_density + Miss_1924 + atlantic_all_years, data = DHS_Children_final, clusters = DHS_Cluster_adj, fixed_effects = ~ Area_Con)
+summary (regtable_Height.Age_Percentile_adj_Children_ro_clu_fe_moreco_fulldata)
+
+
+Var_Structure_OLS_Height_Age_Percentile_for_Children <- c('(Intercept)' = 'Intercept',
+        'within.con'    = 'Inside Concession',
+        'dist.cenpo_km'    = 'Distance Concession Center',
+        'Child_gender' = "Child's Gender",
+        'Child_Age_months'    = "Child's Age (month)",
+        'age_square'    = 'Age squared',
+        'Survey_Year'    = 'Survey Year',
+        'UN_Population_Density_2015'    = 'UN Population Density 2015',
+        'BUILT_Population_2014'    = 'Level of Urbanization',
+        'Land_Suitability'    = 'Land Suitability',
+        'Miss_1924'    = 'Num. Missions in 1924',
+        'atlantic_all_years' = 'Number Enslaved (in 1000)',
+        'tsi_grid_tsi' = 'TseTse Fly Suitability',
+        'road_density'  = 'Road Density')
+
+rows_Height_Age_Percentile_for_Children <- tribble( ~term, ~OLS,  ~OLS, ~OLS, ~OLS, ~OLS,
+                'Bandwidth in km', '60', '60', '60', '60','full',
+                'Fixed Effects', '-', '-', 'X', 'X','X',
+                'Add. Covariats', '-', 'X','-', 'X','X',
+                'Clusters', '69', '69', '69', '69','155')
+attr(rows_Height_Age_Percentile_for_Children, 'position') <- c(30,31,32,33)
+
+
+Model_Height_Age_Percentile_Children_OLS <- list("OLS1" = regtable_Height.Age_Percentile_adj_Children_ro_clu, "OLS2" = regtable_Height.Age_Percentile_adj_Children_ro_clu_moreco, "OLS3" = regtable_Height.Age_Percentile_adj_Children_ro_clu_fe, "OLS4" = regtable_Height.Age_Percentile_adj_Children_ro_clu_fe_moreco, "OLS5" = regtable_Height.Age_Percentile_adj_Children_ro_clu_fe_moreco_fulldata)
+
+Zs_Olsreg_Height_Age_Percentile_Children <- modelsummary(Model_Height_Age_Percentile_Children_OLS,  fmt = 4, title = "Height/Age Percentile for Children", stars = TRUE, coef_map = Var_Structure_OLS_Height_Age_Percentile_for_Children,  gof_map = gm,  add_rows = rows_Height_Age_Percentile_for_Children, output = "latex") %>%  kable_styling(latex_options = c("scale_down","striped","hold_position")) %>% footnote(general = "Notes:", threeparttable = T)
+
+save_kable(Zs_Olsreg_Height_Age_Percentile_Children, file = "Height_Age_Percentile_for_Children_fin.tex")
+
+
+modelsummary(Model_Height_Age_Percentile_Children_OLS,  fmt = 4, title = "OLS Regressions for Height/Age Percentile for Children", stars = TRUE, gof_map = gm, notes = list("Test for note1","Text of the second note."), coef_map = Var_Structure_OLS_Height_Age_Percentile_for_Children, add_rows = rows_Height_Age_Percentile_for_Children, output = "gt")
+
+```
+
+
+
+
