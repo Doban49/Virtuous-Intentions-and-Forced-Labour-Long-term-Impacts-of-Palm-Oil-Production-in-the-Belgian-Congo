@@ -1,0 +1,1218 @@
+---
+title: "Balance Tables"
+author: "DB"
+date: "2023-12-10"
+output: pdf_document
+---
+
+
+
+```{r}
+library(modelsummary)
+library(kableExtra)
+library(gt)
+library(tidyverse)
+library(estimatr)
+library(rdrobust)
+library(rddtools)
+library(haven)
+library(Hmisc)
+library(xtable)
+library(rddapp)
+
+```
+
+
+
+```{r}
+rm(list=ls()) 
+```
+
+
+
+
+```{r}
+#Loading the DHS Regional Covariates table.
+Dist_Geocov_final <- read.csv('.../Replication Package Palm Oil Concessions Belgian Congo/Datasets/Dist_Geocov_final.csv', header=TRUE)
+
+#Adjusting the Proximity_to_National_Border_Variable
+Dist_Geocov_final <- Dist_Geocov_final %>% 
+    mutate(Proximity_to_National_Borders_adj = Proximity_to_National_Borders/1000)
+
+#creating the subsets
+Dist_Geocov_final_60km <- Dist_Geocov_final %>% 
+  filter(dist_concess_bord < 60000)
+Dist_Geocov_final_30km <- Dist_Geocov_final %>% 
+  filter(dist_concess_bord < 30000)
+
+Dist_Geocov_final_60km_Inside <- subset(Dist_Geocov_final_60km, within.con == 1)
+Dist_Geocov_final_60km_Outside <- subset(Dist_Geocov_final_60km, within.con == 0)
+
+Dist_Geocov_final_30km_Inside <- subset(Dist_Geocov_final_30km, within.con == 1)
+Dist_Geocov_final_30km_Outside <- subset(Dist_Geocov_final_30km, within.con == 0)
+
+
+# Loading the Unco_DS_final as main dataset. 
+Unco_DS_final<- read.csv(".../Replication Package Palm Oil Concessions Belgian Congo/Datasets/Unco_DS_final.csv", header=TRUE)
+
+#creating the subsets
+Unco_DS_final_60km <- Unco_DS_final %>% 
+  filter(dist_concess_bord < 60000)
+Unco_DS_final_30km <- Unco_DS_final %>% 
+  filter(dist_concess_bord < 30000)
+
+Unco_DS_final_60km_Inside <- subset(Unco_DS_final_60km, within.con == 1)
+Unco_DS_final_60km_Outside <- subset(Unco_DS_final_60km, within.con == 0)
+
+Unco_DS_final_30km_Inside <- subset(Unco_DS_final_30km, within.con == 1)
+Unco_DS_final_30km_Outside <- subset(Unco_DS_final_30km, within.con == 0)
+
+
+#Loading the additional used by Lowes and Montero (2020).
+Unco_Lowes_Rubber_all_important_Var<- read.csv('.../Replication Package Palm Oil Concessions Belgian Congo/Datasets/Unco_Lowes_Rubber_all_important_Var.csv', header=TRUE)
+
+Unco_Lowes_Rubber_all_important_Var_60km <- Unco_Lowes_Rubber_all_important_Var %>% 
+  filter(dist_concess_bord < 60000)
+Unco_Lowes_Rubber_all_important_Var_30km <- Unco_Lowes_Rubber_all_important_Var %>% 
+  filter(dist_concess_bord < 30000)
+
+Unco_Lowes_Rubber_all_important_Var_60km_Inside <- subset(Unco_Lowes_Rubber_all_important_Var_60km, within.con == 1)
+Unco_Lowes_Rubber_all_important_Var_60km_Outside <- subset(Unco_Lowes_Rubber_all_important_Var_60km, within.con == 0)
+
+Unco_Lowes_Rubber_all_important_Var_30km_Inside <- subset(Unco_Lowes_Rubber_all_important_Var_30km, within.con == 1)
+Unco_Lowes_Rubber_all_important_Var_30km_Outside <- subset(Unco_Lowes_Rubber_all_important_Var_30km, within.con == 0)
+
+
+```
+
+
+
+
+
+
+```{r}
+##########################################################################################
+# Balance Check plot for 60 km with clustered errors and fixed to compare the mean values.
+##########################################################################################
+
+
+
+# OLS regression (lm_robust) loop for gender, age, age_square and Survey Year.
+dv_Unco <- c("gender", "age", "age_square", "Dummy_Survey_Year")
+for(i in 1:length(dv_Unco)){
+model <- paste("lm_rb_",dv_Unco[i], sep="")
+m <- lm_robust(as.formula(paste(dv_Unco[i],"~ within.con")),  data=Unco_DS_final_60km, clusters = DHS_Cluster_adj, fixed_effects = ~ Area_Con)
+assign(model,m)
+}
+
+# OLS regression (lm_robust) loop for the DHS Covariables.
+dv_Geo_DHS <- c("UN_Population_Density_2015", "BUILT_Population_2014", "Annual_Precipitation_2015", "Malaria_Incidence_2015", "Mean_Temperature_2015", "Travel_Times_2015", "Gross_Cell_Production", "Enhanced_Vegetation_Index_2015_adj", "Slope", "Proximity_to_National_Borders_adj")
+for(i in 1:length(dv_Geo_DHS)){
+model <- paste("lm_rb_",dv_Geo_DHS[i], sep="")
+m <- lm_robust(as.formula(paste(dv_Geo_DHS[i],"~ within.con")), clusters = terr_name, fixed_effects = ~ Area_Con, data=Dist_Geocov_final_60km)
+assign(model,m)
+}
+
+
+Standard_Error_60km <-  c(lm_rb_gender$std.error[1],
+  lm_rb_age$std.error[1], 
+  lm_rb_age_square$std.error[1], 
+  lm_rb_Dummy_Survey_Year$std.error[1], 
+  lm_rb_UN_Population_Density_2015$std.error[1], 
+  lm_rb_BUILT_Population_2014$std.error[1], 
+  lm_rb_Annual_Precipitation_2015$std.error[1], 
+  lm_rb_Malaria_Incidence_2015$std.error[1], 
+  lm_rb_Mean_Temperature_2015$std.error[1], 
+  lm_rb_Travel_Times_2015$std.error[1], 
+  lm_rb_Gross_Cell_Production$std.error[1],
+  lm_rb_Enhanced_Vegetation_Index_2015_adj$std.error[1],
+  lm_rb_Slope$std.error[1],
+  lm_rb_Proximity_to_National_Borders_adj$std.error[1])
+
+
+P_Value_60km <- c(lm_rb_gender$p.value[1],
+  lm_rb_age$p.value[1], 
+  lm_rb_age_square$p.value[1], 
+  lm_rb_Dummy_Survey_Year$p.value[1], 
+  lm_rb_UN_Population_Density_2015$p.value[1], 
+  lm_rb_BUILT_Population_2014$p.value[1], 
+  lm_rb_Annual_Precipitation_2015$p.value[1], 
+  lm_rb_Malaria_Incidence_2015$p.value[1], 
+  lm_rb_Mean_Temperature_2015$p.value[1], 
+  lm_rb_Travel_Times_2015$p.value[1], 
+  lm_rb_Gross_Cell_Production$p.value[1],
+  lm_rb_Enhanced_Vegetation_Index_2015_adj$p.value[1],
+  lm_rb_Slope$p.value[1],
+  lm_rb_Proximity_to_National_Borders_adj$p.value[1])
+
+                                                                                                                                          
+    Mean_Inside_60km <- c(mean(Unco_DS_final_60km_Inside$gender), 
+                mean(Unco_DS_final_60km_Inside$age),
+                mean(Unco_DS_final_60km_Inside$age_square),
+                mean(Unco_DS_final_60km_Inside$Dummy_Survey_Year),
+                mean(Dist_Geocov_final_60km_Inside$UN_Population_Density_2015),
+                mean(Dist_Geocov_final_60km_Inside$BUILT_Population_2014),
+                mean(Dist_Geocov_final_60km_Inside$Annual_Precipitation_2015),
+                mean(Dist_Geocov_final_60km_Inside$Malaria_Incidence_2015),
+                mean(Dist_Geocov_final_60km_Inside$Mean_Temperature_2015),
+                mean(Dist_Geocov_final_60km_Inside$Travel_Times_2015),
+                mean(Dist_Geocov_final_60km_Inside$Gross_Cell_Production),
+                mean(Dist_Geocov_final_60km_Inside$Enhanced_Vegetation_Index_2015_adj),
+                mean(Dist_Geocov_final_60km_Inside$Slope),
+                mean(Dist_Geocov_final_60km_Inside$Proximity_to_National_Borders_adj)
+                )
+Mean_Outside_60km <- c(mean(Unco_DS_final_60km_Outside$gender), 
+                mean(Unco_DS_final_60km_Outside$age),
+                mean(Unco_DS_final_60km_Outside$age_square),
+                mean(Unco_DS_final_60km_Outside$Dummy_Survey_Year),
+                mean(Dist_Geocov_final_60km_Outside$UN_Population_Density_2015),
+                mean(Dist_Geocov_final_60km_Outside$BUILT_Population_2014),
+                mean(Dist_Geocov_final_60km_Outside$Annual_Precipitation_2015),
+                mean(Dist_Geocov_final_60km_Outside$Malaria_Incidence_2015),
+                mean(Dist_Geocov_final_60km_Outside$Mean_Temperature_2015),
+                mean(Dist_Geocov_final_60km_Outside$Travel_Times_2015),
+                mean(Dist_Geocov_final_60km_Outside$Gross_Cell_Production),
+                mean(Dist_Geocov_final_60km_Outside$Enhanced_Vegetation_Index_2015_adj),
+                mean(Dist_Geocov_final_60km_Outside$Slope),
+                mean(Dist_Geocov_final_60km_Outside$Proximity_to_National_Borders_adj)
+                )  
+
+
+Rownames <- c("Gender", "Age", "Age squared", "Dummy Survey Year", "Population Density 2015", "Level of Urbanization", "Annual Precipitation 2015", "Malaria Incidence 2015", "Mean Temperature 2015", "Travel Times 2015", "Spatial Economic Output", "Enhanced Vegetation Index", "Slope", "Proximity to National Borders")
+                                                                                                                                  Balance_Check_60km_with_Fe_clu_err <- data.frame(Rownames, Mean_Inside_60km, Mean_Outside_60km, Standard_Error_60km, P_Value_60km)
+Balance_Check_60km_with_Fe_clu_err
+                                                                                                                                        
+
+print(xtable(Balance_Check_60km_with_Fe_clu_err, caption="Balance Check on Covariats (60km)", digits=c(0,0,2,2,3,3), auto = TRUE, type= "latex"))
+```
+
+
+
+
+
+```{r}
+##################################################################################################
+# Balance Check plot for 30 km with clustered errors and fixed effects to compare the mean values.  
+##################################################################################################
+
+
+# OLS regression (lm_robust) loop for gender, age, age_square and Survey Year.
+dv_Unco <- c("gender", "age", "age_square", "Dummy_Survey_Year")
+for(i in 1:length(dv_Unco)){
+model <- paste("lm_rb_",dv_Unco[i], sep="")
+m <- lm_robust(as.formula(paste(dv_Unco[i],"~ within.con")),  data=Unco_DS_final_30km, clusters = DHS_Cluster_adj, fixed_effects = ~ Area_Con)
+assign(model,m)
+}
+
+# OLS regression (lm_robust) loop for the DHS covariables.
+dv_Geo_DHS <- c("UN_Population_Density_2015", "BUILT_Population_2014", "Annual_Precipitation_2015", "Malaria_Incidence_2015", "Mean_Temperature_2015", "Travel_Times_2015", "Gross_Cell_Production", "Enhanced_Vegetation_Index_2015_adj", "Slope", "Proximity_to_National_Borders_adj")
+for(i in 1:length(dv_Geo_DHS)){
+model <- paste("lm_rb_",dv_Geo_DHS[i], sep="")
+m <- lm_robust(as.formula(paste(dv_Geo_DHS[i],"~ within.con")), clusters = terr_name, fixed_effects = ~ Area_Con, data=Dist_Geocov_final_30km)
+assign(model,m)
+}
+
+
+Standard_Error_30km <-  c(lm_rb_gender$std.error[1],
+  lm_rb_age$std.error[1], 
+  lm_rb_age_square$std.error[1], 
+  lm_rb_Dummy_Survey_Year$std.error[1], 
+  lm_rb_UN_Population_Density_2015$std.error[1], 
+  lm_rb_BUILT_Population_2014$std.error[1], 
+  lm_rb_Annual_Precipitation_2015$std.error[1], 
+  lm_rb_Malaria_Incidence_2015$std.error[1], 
+  lm_rb_Mean_Temperature_2015$std.error[1], 
+  lm_rb_Travel_Times_2015$std.error[1], 
+  lm_rb_Gross_Cell_Production$std.error[1],
+  lm_rb_Enhanced_Vegetation_Index_2015_adj$std.error[1],
+  lm_rb_Slope$std.error[1],
+  lm_rb_Proximity_to_National_Borders_adj$std.error[1])
+
+
+P_Value_30km <- c(lm_rb_gender$p.value[1],
+  lm_rb_age$p.value[1], 
+  lm_rb_age_square$p.value[1], 
+  lm_rb_Dummy_Survey_Year$p.value[1], 
+  lm_rb_UN_Population_Density_2015$p.value[1], 
+  lm_rb_BUILT_Population_2014$p.value[1], 
+  lm_rb_Annual_Precipitation_2015$p.value[1], 
+  lm_rb_Malaria_Incidence_2015$p.value[1], 
+  lm_rb_Mean_Temperature_2015$p.value[1], 
+  lm_rb_Travel_Times_2015$p.value[1], 
+  lm_rb_Gross_Cell_Production$p.value[1],
+  lm_rb_Enhanced_Vegetation_Index_2015_adj$p.value[1],
+  lm_rb_Slope$p.value[1],
+  lm_rb_Proximity_to_National_Borders_adj$p.value[1])
+
+                                                                                                                                          
+    Mean_Inside_30km <- c(mean(Unco_DS_final_30km_Inside$gender), 
+                mean(Unco_DS_final_30km_Inside$age),
+                mean(Unco_DS_final_30km_Inside$age_square),
+                mean(Unco_DS_final_30km_Inside$Dummy_Survey_Year),
+                mean(Dist_Geocov_final_30km_Inside$UN_Population_Density_2015),
+                mean(Dist_Geocov_final_30km_Inside$BUILT_Population_2014),
+                mean(Dist_Geocov_final_30km_Inside$Annual_Precipitation_2015),
+                mean(Dist_Geocov_final_30km_Inside$Malaria_Incidence_2015),
+                mean(Dist_Geocov_final_30km_Inside$Mean_Temperature_2015),
+                mean(Dist_Geocov_final_30km_Inside$Travel_Times_2015),
+                mean(Dist_Geocov_final_30km_Inside$Gross_Cell_Production),
+                mean(Dist_Geocov_final_30km_Inside$Enhanced_Vegetation_Index_2015_adj),
+                mean(Dist_Geocov_final_30km_Inside$Slope),
+                mean(Dist_Geocov_final_30km_Inside$Proximity_to_National_Borders_adj)
+                )
+Mean_Outside_30km <- c(mean(Unco_DS_final_30km_Outside$gender), 
+                mean(Unco_DS_final_30km_Outside$age),
+                mean(Unco_DS_final_30km_Outside$age_square),
+                mean(Unco_DS_final_30km_Outside$Dummy_Survey_Year),
+                mean(Dist_Geocov_final_30km_Outside$UN_Population_Density_2015),
+                mean(Dist_Geocov_final_30km_Outside$BUILT_Population_2014),
+                mean(Dist_Geocov_final_30km_Outside$Annual_Precipitation_2015),
+                mean(Dist_Geocov_final_30km_Outside$Malaria_Incidence_2015),
+                mean(Dist_Geocov_final_30km_Outside$Mean_Temperature_2015),
+                mean(Dist_Geocov_final_30km_Outside$Travel_Times_2015),
+                mean(Dist_Geocov_final_30km_Outside$Gross_Cell_Production),
+                mean(Dist_Geocov_final_30km_Outside$Enhanced_Vegetation_Index_2015_adj),
+                mean(Dist_Geocov_final_30km_Outside$Slope),
+                mean(Dist_Geocov_final_30km_Outside$Proximity_to_National_Borders_adj)
+                )  
+
+
+Rownames <- c("Gender", "Age", "Age squared", "Dummy Survey Year", "Population Density 2015", "Level of Urbanization", "Annual Precipitation 2015", "Malaria Incidence 2015", "Mean Temperature 2015", "Travel Times 2015", "Spatial Economic Output", "Enhanced Vegetation Index", "Slope", "Proximity to National Borders")
+                                                                                                                                  Balance_Check_30km_with_Fe_clu_err <- data.frame(Rownames, Mean_Inside_30km, Mean_Outside_30km, Standard_Error_30km, P_Value_30km)
+Balance_Check_30km_with_Fe_clu_err
+                                                                                                                                      
+print(xtable(Balance_Check_30km_with_Fe_clu_err, caption="Balance Check on Covariats (30km)", digits=c(0,0,2,2,3,3), auto = TRUE, type= "latex"))
+
+# Combinging Balance table for 60km and 30km. 
+Balance_Check_mean_60km_30km_with_Fe_clu_err <- merge(Balance_Check_60km_with_Fe_clu_err, Balance_Check_30km_with_Fe_clu_err, by = "Rownames", sort = FALSE)
+Balance_Check_mean_60km_30km_with_Fe_clu_err
+
+
+```
+
+
+
+```{r}
+
+########################################################################################################
+# Balance Check with RDD coefficients (60 km) for covariables, using  clustered errors and fixed effects. 
+########################################################################################################
+
+
+# RDD loop for gender, age, age_square and Survey Year.
+attach(Unco_DS_final)
+dv_Unco <- c("gender", "age", "age_square", "Dummy_Survey_Year")
+for(i in 1:length(dv_Unco)){
+model <- paste("rd_est_",dv_Unco[i], sep="")
+m <- rd_est(formula = as.formula(paste(dv_Unco[i],"~ dist_concess_bord_cen_km |  Brabanta +  Elisabetha + Flandria + Lusanga")),  data=Unco_DS_final, bw = 60, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l")
+assign(model,m)
+}
+detach(Unco_DS_final)
+
+
+# RDD loop for the DHS Covariables.
+attach(Dist_Geocov_final)
+dv_Geo_DHS <- c("UN_Population_Density_2015", "BUILT_Population_2014", "Annual_Precipitation_2015", "Malaria_Incidence_2015", "Mean_Temperature_2015", "Travel_Times_2015", "Gross_Cell_Production", "Enhanced_Vegetation_Index_2015_adj", "Slope", "Proximity_to_National_Borders_adj")
+for(i in 1:length(dv_Geo_DHS)){
+model <- paste("rd_est_",dv_Geo_DHS[i], sep="")
+m <- rd_est(formula = as.formula(paste(dv_Geo_DHS[i],"~ dist_concess_bord_cen_km |  Brabanta +  Elisabetha + Flandria + Lusanga")),  data=Dist_Geocov_final, bw = 60, cluster = terr_name, less= TRUE, t.design = "l")
+assign(model,m)
+}
+detach(Dist_Geocov_final)
+
+
+
+
+RDD_coeffecient_balance_check_60km <- c(rd_est_gender$est[2],
+                                        rd_est_age$est[2],
+                                        rd_est_age_square$est[2],
+                                        rd_est_Dummy_Survey_Year$est[2],
+                                        rd_est_UN_Population_Density_2015$est[2],
+                                        rd_est_BUILT_Population_2014$est[2],
+                                        rd_est_Annual_Precipitation_2015$est[2],
+                                        rd_est_Malaria_Incidence_2015$est[2],
+                                        rd_est_Mean_Temperature_2015$est[2],
+                                        rd_est_Travel_Times_2015$est[2],
+                                        rd_est_Gross_Cell_Production$est[2],
+                                        rd_est_Enhanced_Vegetation_Index_2015_adj$est[2],
+                                        rd_est_Slope$est[2],
+                                        rd_est_Proximity_to_National_Borders_adj$est[2])
+                                        
+                                    
+                
+RDD_standard_errors_balance_check_60km <- c(rd_est_gender$se[2],
+                                        rd_est_age$se[2],
+                                        rd_est_age_square$se[2],
+                                        rd_est_Dummy_Survey_Year$se[2],
+                                        rd_est_UN_Population_Density_2015$se[2],
+                                        rd_est_BUILT_Population_2014$se[2],
+                                        rd_est_Annual_Precipitation_2015$se[2],
+                                        rd_est_Malaria_Incidence_2015$se[2],
+                                        rd_est_Mean_Temperature_2015$se[2],
+                                        rd_est_Travel_Times_2015$se[2],
+                                        rd_est_Gross_Cell_Production$se[2],
+                                        rd_est_Enhanced_Vegetation_Index_2015_adj$se[2],
+                                        rd_est_Slope$se[2],
+                                        rd_est_Proximity_to_National_Borders_adj$se[2])
+
+RDD_pvalues_balance_check_60km <- c(rd_est_gender$p[2],
+                                        rd_est_age$p[2],
+                                        rd_est_age_square$p[2],
+                                        rd_est_Dummy_Survey_Year$p[2],
+                                        rd_est_UN_Population_Density_2015$p[2],
+                                        rd_est_BUILT_Population_2014$p[2],
+                                        rd_est_Annual_Precipitation_2015$p[2],
+                                        rd_est_Malaria_Incidence_2015$p[2],
+                                        rd_est_Mean_Temperature_2015$p[2],
+                                        rd_est_Travel_Times_2015$p[2],
+                                        rd_est_Gross_Cell_Production$p[2],
+                                        rd_est_Enhanced_Vegetation_Index_2015_adj$p[2],
+                                        rd_est_Slope$p[2],
+                                        rd_est_Proximity_to_National_Borders_adj$p[2])
+
+
+Rownames <- c("Gender", "Age", "Age squared", "Dummy Survey Year", "Population Density 2015", "Level of Urbanization", "Annual Precipitation 2015", "Malaria Incidence 2015", "Mean Temperature 2015", "Travel Times 2015", "Spatial Economic Output", "Enhanced Vegetation Index", "Slope", "Proximity to National Borders")
+
+RDD_Covariats_Balance_Check_60km <- data.frame(Rownames, RDD_coeffecient_balance_check_60km, RDD_standard_errors_balance_check_60km,  RDD_pvalues_balance_check_60km)
+RDD_Covariats_Balance_Check_60km
+
+print(xtable(RDD_Covariats_Balance_Check_60km, caption="RD Estimates for Covariats (60km)", digits=c(0,0,3,3,3), auto = TRUE, type= "latex"))
+```
+
+
+```{r}
+
+########################################################################################################
+# Balance Check with RDD coefficients (30 km) for covariables, using  clustered errors and fixed effects. 
+########################################################################################################
+
+
+# RDD loop for gender, age, age_square and Survey Year.
+attach(Unco_DS_final)
+dv_Unco <- c("gender", "age", "age_square", "Dummy_Survey_Year")
+for(i in 1:length(dv_Unco)){
+model <- paste("rd_est_",dv_Unco[i], sep="")
+m <- rd_est(formula = as.formula(paste(dv_Unco[i],"~ dist_concess_bord_cen_km |  Brabanta +  Elisabetha + Flandria + Lusanga")),  data=Unco_DS_final, bw = 30, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l")
+assign(model,m)
+}
+detach(Unco_DS_final)
+
+
+# RDD loop for the DHS Covariables.
+attach(Dist_Geocov_final)
+dv_Geo_DHS <- c("UN_Population_Density_2015", "BUILT_Population_2014", "Annual_Precipitation_2015", "Malaria_Incidence_2015", "Mean_Temperature_2015", "Travel_Times_2015", "Gross_Cell_Production", "Enhanced_Vegetation_Index_2015_adj", "Slope", "Proximity_to_National_Borders_adj")
+for(i in 1:length(dv_Geo_DHS)){
+model <- paste("rd_est_",dv_Geo_DHS[i], sep="")
+m <- rd_est(formula = as.formula(paste(dv_Geo_DHS[i],"~ dist_concess_bord_cen_km |  Brabanta +  Elisabetha + Flandria + Lusanga")),  data=Dist_Geocov_final, bw = 30, cluster = terr_name, less= TRUE, t.design = "l")
+assign(model,m)
+}
+detach(Dist_Geocov_final)
+
+
+
+
+RDD_coeffecient_balance_check_30km <- c(rd_est_gender$est[2],
+                                        rd_est_age$est[2],
+                                        rd_est_age_square$est[2],
+                                        rd_est_Dummy_Survey_Year$est[2],
+                                        rd_est_UN_Population_Density_2015$est[2],
+                                        rd_est_BUILT_Population_2014$est[2],
+                                        rd_est_Annual_Precipitation_2015$est[2],
+                                        rd_est_Malaria_Incidence_2015$est[2],
+                                        rd_est_Mean_Temperature_2015$est[2],
+                                        rd_est_Travel_Times_2015$est[2],
+                                        rd_est_Gross_Cell_Production$est[2],
+                                        rd_est_Enhanced_Vegetation_Index_2015_adj$est[2],
+                                        rd_est_Slope$est[2],
+                                        rd_est_Proximity_to_National_Borders_adj$est[2])
+                                        
+                                    
+                
+RDD_standard_errors_balance_check_30km <- c(rd_est_gender$se[2],
+                                        rd_est_age$se[2],
+                                        rd_est_age_square$se[2],
+                                        rd_est_Dummy_Survey_Year$se[2],
+                                        rd_est_UN_Population_Density_2015$se[2],
+                                        rd_est_BUILT_Population_2014$se[2],
+                                        rd_est_Annual_Precipitation_2015$se[2],
+                                        rd_est_Malaria_Incidence_2015$se[2],
+                                        rd_est_Mean_Temperature_2015$se[2],
+                                        rd_est_Travel_Times_2015$se[2],
+                                        rd_est_Gross_Cell_Production$se[2],
+                                        rd_est_Enhanced_Vegetation_Index_2015_adj$se[2],
+                                        rd_est_Slope$se[2],
+                                        rd_est_Proximity_to_National_Borders_adj$se[2])
+
+RDD_pvalues_balance_check_30km <- c(rd_est_gender$p[2],
+                                        rd_est_age$p[2],
+                                        rd_est_age_square$p[2],
+                                        rd_est_Dummy_Survey_Year$p[2],
+                                        rd_est_UN_Population_Density_2015$p[2],
+                                        rd_est_BUILT_Population_2014$p[2],
+                                        rd_est_Annual_Precipitation_2015$p[2],
+                                        rd_est_Malaria_Incidence_2015$p[2],
+                                        rd_est_Mean_Temperature_2015$p[2],
+                                        rd_est_Travel_Times_2015$p[2],
+                                        rd_est_Gross_Cell_Production$p[2],
+                                        rd_est_Enhanced_Vegetation_Index_2015_adj$p[2],
+                                        rd_est_Slope$p[2],
+                                        rd_est_Proximity_to_National_Borders_adj$p[2])
+
+
+Rownames <- c("Gender", "Age", "Age squared", "Dummy Survey Year", "Population Density 2015", "Level of Urbanization", "Annual Precipitation 2015", "Malaria Incidence 2015", "Mean Temperature 2015", "Travel Times 2015", "Spatial Economic Output", "Enhanced Vegetation Index", "Slope", "Proximity to National Borders")
+
+RDD_Covariats_Balance_Check_30km <- data.frame(Rownames, RDD_coeffecient_balance_check_30km, RDD_standard_errors_balance_check_30km,  RDD_pvalues_balance_check_30km)
+RDD_Covariats_Balance_Check_30km
+
+Balance_Check_RDD_Coefficient_60km_30km_with_Fe_clu_err <- merge(RDD_Covariats_Balance_Check_60km, RDD_Covariats_Balance_Check_30km, by = "Rownames", sort = FALSE)
+Balance_Check_RDD_Coefficient_60km_30km_with_Fe_clu_err
+
+```
+
+
+
+
+
+
+```{r}
+##################################################################################################
+# Using covariables from Lowes and Montero (2020) for Balance Check (60km) to compare mean values. 
+##################################################################################################
+
+
+
+# OLS Regression (lm_robust) loop for geovariables  mostly used by Lowes and Montero (2020)
+dv_Lcov_terr <- c("ALT", "prec_WCD_mean", "prec_WCD_std", "land_suit", "ruggedness_mean", "malaria_suit", "tsi_grid_tsi", "dist_kin","dist_sea", "afpop00_mean", "LS_mean","road_density_2","Miss_1924","Inside_AA")
+for(i in 1:length(dv_Lcov_terr)){
+model <- paste("lm_rb_",dv_Lcov_terr[i], sep="")
+m <- lm_robust(as.formula(paste(dv_Lcov_terr[i],"~ within.con")), data=Unco_Lowes_Rubber_all_important_Var_60km, clusters = terr_name, fixed_effects = ~ Area_Con)
+assign(model,m)
+}
+
+# OLS Regression (lm_robust) loop for colonial variables, also extracted from Lowes and Montero (2020). 
+dv_Lcov_mur_name <- c("atlantic_all_years", "ln_popd_murdock", "central", "polygonous","hereditary")
+for(i in 1:length(dv_Lcov_mur_name)){
+model <- paste("lm_rb_",dv_Lcov_mur_name[i], sep="")
+m <- lm_robust(as.formula(paste(dv_Lcov_mur_name[i],"~ within.con")), data=Unco_Lowes_Rubber_all_important_Var_60km, clusters = murdock_name, fixed_effects = ~ Area_Con)
+assign(model,m)
+}
+
+
+
+Standard_Error_60km <-  c(lm_rb_ALT$std.error[1],
+  lm_rb_prec_WCD_mean$std.error[1], 
+  lm_rb_prec_WCD_std$std.error[1], 
+  lm_rb_land_suit$std.error[1], 
+  lm_rb_ruggedness_mean$std.error[1], 
+  lm_rb_malaria_suit$std.error[1], 
+  lm_rb_tsi_grid_tsi$std.error[1], 
+  lm_rb_dist_kin$std.error[1], 
+  lm_rb_dist_sea$std.error[1],
+  lm_rb_afpop00_mean$std.error[1], 
+  lm_rb_LS_mean$std.error[1],
+  lm_rb_road_density_2$std.error[1],
+  lm_rb_Miss_1924$std.error[1],
+  lm_rb_Inside_AA$std.error[1],
+  lm_rb_atlantic_all_years$std.error[1],
+  lm_rb_ln_popd_murdock$std.error[1],
+  lm_rb_central$std.error[1],
+  lm_rb_polygonous$std.error[1],
+  lm_rb_hereditary$std.error[1])
+
+
+P_Value_60km <- c(lm_rb_ALT$p.value[1],
+  lm_rb_prec_WCD_mean$p.value[1], 
+  lm_rb_prec_WCD_std$p.value[1], 
+  lm_rb_land_suit$p.value[1], 
+  lm_rb_ruggedness_mean$p.value[1], 
+  lm_rb_malaria_suit$p.value[1], 
+  lm_rb_tsi_grid_tsi$p.value[1], 
+  lm_rb_dist_kin$p.value[1],
+  lm_rb_dist_sea$p.value[1],
+  lm_rb_afpop00_mean$p.value[1], 
+  lm_rb_LS_mean$p.value[1],
+  lm_rb_road_density_2$p.value[1],
+  lm_rb_Miss_1924$p.value[1],
+  lm_rb_Inside_AA$p.value[1],
+  lm_rb_atlantic_all_years$p.value[1],
+  lm_rb_ln_popd_murdock$p.value[1],
+  lm_rb_central$p.value[1],
+  lm_rb_polygonous$p.value[1],
+  lm_rb_hereditary$p.value[1])
+
+
+
+#Creating the means for 60 km.
+Mean_Inside_60km <- c(mean(Unco_Lowes_Rubber_all_important_Var_60km_Inside$ALT), 
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Inside$prec_WCD_mean),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Inside$prec_WCD_std),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Inside$Land_Suitability),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Inside$ruggedness_mean),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Inside$malaria_suit),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Inside$tsi_grid_tsi),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Inside$dist_kin),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Inside$dist_sea),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Inside$afpop00_mean),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Inside$LS_mean),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Inside$road_density_2, na.rm=TRUE),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Inside$Miss_1924),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Inside$Inside_AA),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Inside$atlantic_all_years),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Inside$ln_popd_murdock,na.rm=TRUE),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Inside$central,na.rm=TRUE),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Inside$polygonous,na.rm=TRUE),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Inside$hereditary,na.rm=TRUE))
+
+Mean_Outside_60km <-  c(mean(Unco_Lowes_Rubber_all_important_Var_60km_Outside$ALT), 
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Outside$prec_WCD_mean),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Outside$prec_WCD_std),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Outside$Land_Suitability),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Outside$ruggedness_mean),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Outside$malaria_suit),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Outside$tsi_grid_tsi),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Outside$dist_kin),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Outside$dist_sea),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Outside$afpop00_mean),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Outside$LS_mean),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Outside$road_density_2, na.rm=TRUE),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Outside$Miss_1924),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Outside$Inside_AA),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Outside$atlantic_all_years),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Outside$ln_popd_murdock,na.rm=TRUE),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Outside$central,na.rm=TRUE),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Outside$polygonous,na.rm=TRUE),
+                mean(Unco_Lowes_Rubber_all_important_Var_60km_Outside$hereditary,na.rm=TRUE))
+
+
+Rownames <- c("Elevation", "Average Rainfall", "Standard Deviation Rainfall", "Land Suitability", "Ruggedness", 
+              "Malaria Suitability", "TseTse Fly Suitability", "Distance to Kinshasa","Distance to Coast", "Population Density African pop.", "Population Density Landscan", "Road Density","Missionary Stations 1924","Inside AA","Number Enslaved in 1000","Precolonial Population Density","Centralization","Polygynous", "Hereditary Local Headman Selection") 
+
+Balance_Check_60km_LowMon_with_fe_clu <- data.frame(Rownames, Mean_Inside_60km, Mean_Outside_60km, Standard_Error_60km, P_Value_60km)
+Balance_Check_60km_LowMon_with_fe_clu                                                                                                                                        
+print(xtable(Balance_Check_60km_LowMon_with_fe_clu, caption="Balance Check on Covariats used by Lowes and Montero (2020) (60km)", digits=c(0,0,2,2,3,3), auto = TRUE, type= "latex"))
+
+```
+
+
+
+
+```{r}
+######################################################################################################
+# Using covariables from Lowes and Montero (2020) for Balance Check (30km) to compare the mean values.
+######################################################################################################
+
+
+
+# OLS Regression (lm_robust) loop for geovariables  mostly used by Lowes and Montero (2020).
+dv_Lcov_terr <- c("ALT", "prec_WCD_mean", "prec_WCD_std", "land_suit", "ruggedness_mean", "malaria_suit", "tsi_grid_tsi", "dist_kin","dist_sea", "afpop00_mean", "LS_mean", "road_density_2", "Miss_1924","Inside_AA")
+for(i in 1:length(dv_Lcov_terr)){
+model <- paste("lm_rb_",dv_Lcov_terr[i], sep="")
+m <- lm_robust(as.formula(paste(dv_Lcov_terr[i],"~ within.con")), data=Unco_Lowes_Rubber_all_important_Var_30km, clusters = terr_name, fixed_effects = ~ Area_Con)
+assign(model,m)
+}
+
+
+# OLS Regression (lm_robust) loop for colonial variables, also extracted from Lowes and Montero (2020). 
+dv_Lcov_mur_name <- c("atlantic_all_years", "ln_popd_murdock", "central", "polygonous","hereditary")
+for(i in 1:length(dv_Lcov_mur_name)){
+model <- paste("lm_rb_",dv_Lcov_mur_name[i], sep="")
+m <- lm_robust(as.formula(paste(dv_Lcov_mur_name[i],"~ within.con")), data=Unco_Lowes_Rubber_all_important_Var_30km, clusters = murdock_name, fixed_effects = ~ Area_Con)
+assign(model,m)
+}
+
+
+
+Standard_Error_30km <-  c(lm_rb_ALT$std.error[1],
+  lm_rb_prec_WCD_mean$std.error[1], 
+  lm_rb_prec_WCD_std$std.error[1], 
+  lm_rb_land_suit$std.error[1], 
+  lm_rb_ruggedness_mean$std.error[1], 
+  lm_rb_malaria_suit$std.error[1], 
+  lm_rb_tsi_grid_tsi$std.error[1], 
+  lm_rb_dist_kin$std.error[1], 
+  lm_rb_dist_sea$std.error[1],
+  lm_rb_afpop00_mean$std.error[1], 
+  lm_rb_LS_mean$std.error[1],
+  lm_rb_road_density_2$std.error[1],
+  lm_rb_Miss_1924$std.error[1],
+  lm_rb_Inside_AA$std.error[1],
+  lm_rb_atlantic_all_years$std.error[1],
+  lm_rb_ln_popd_murdock$std.error[1],
+  lm_rb_central$std.error[1],
+  lm_rb_polygonous$std.error[1],
+  lm_rb_hereditary$std.error[1])
+
+
+P_Value_30km <- c(lm_rb_ALT$p.value[1],
+  lm_rb_prec_WCD_mean$p.value[1], 
+  lm_rb_prec_WCD_std$p.value[1], 
+  lm_rb_land_suit$p.value[1], 
+  lm_rb_ruggedness_mean$p.value[1], 
+  lm_rb_malaria_suit$p.value[1], 
+  lm_rb_tsi_grid_tsi$p.value[1], 
+  lm_rb_dist_kin$p.value[1],
+  lm_rb_dist_sea$p.value[1],
+  lm_rb_afpop00_mean$p.value[1], 
+  lm_rb_LS_mean$p.value[1],
+  lm_rb_road_density_2$p.value[1],
+  lm_rb_Miss_1924$p.value[1],
+  lm_rb_Inside_AA$p.value[1],
+  lm_rb_atlantic_all_years$p.value[1],
+  lm_rb_ln_popd_murdock$p.value[1],
+  lm_rb_central$p.value[1],
+  lm_rb_polygonous$p.value[1],
+  lm_rb_hereditary$p.value[1])
+
+
+
+#Creating the means for 60 km
+Mean_Inside_30km <- c(mean(Unco_Lowes_Rubber_all_important_Var_30km_Inside$ALT), 
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Inside$prec_WCD_mean),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Inside$prec_WCD_std),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Inside$Land_Suitability),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Inside$ruggedness_mean),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Inside$malaria_suit),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Inside$tsi_grid_tsi),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Inside$dist_kin),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Inside$dist_sea),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Inside$afpop00_mean),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Inside$LS_mean),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Inside$road_density_2, na.rm=TRUE),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Inside$Miss_1924),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Inside$Inside_AA),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Inside$atlantic_all_years),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Inside$ln_popd_murdock,na.rm=TRUE),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Inside$central,na.rm=TRUE),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Inside$polygonous,na.rm=TRUE),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Inside$hereditary,na.rm=TRUE))
+
+Mean_Outside_30km <-  c(mean(Unco_Lowes_Rubber_all_important_Var_30km_Outside$ALT), 
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Outside$prec_WCD_mean),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Outside$prec_WCD_std),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Outside$Land_Suitability),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Outside$ruggedness_mean),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Outside$malaria_suit),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Outside$tsi_grid_tsi),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Outside$dist_kin),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Outside$dist_sea),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Outside$afpop00_mean),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Outside$LS_mean),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Outside$road_density_2, na.rm=TRUE),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Outside$Miss_1924),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Outside$Inside_AA),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Outside$atlantic_all_years),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Outside$ln_popd_murdock,na.rm=TRUE),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Outside$central,na.rm=TRUE),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Outside$polygonous,na.rm=TRUE),
+                mean(Unco_Lowes_Rubber_all_important_Var_30km_Outside$hereditary,na.rm=TRUE))
+
+
+Rownames <- c("Elevation", "Average Rainfall", "Standard Deviation Rainfall", "Land Suitability", "Ruggedness", 
+              "Malaria Suitability", "TseTse Fly Suitability", "Distance to Kinshasa","Distance to Coast", "Population Density African pop.", "Population Density Landscan", "Road Density","Missionary Stations 1924","Inside AA","Number Enslaved in 1000","Precolonial Population Density","Centralization","Polygynous", "Hereditary Local Headman Selection") 
+
+
+Balance_Check_30km_LowMon_with_fe_clu <- data.frame(Rownames, Mean_Inside_30km, Mean_Outside_30km, Standard_Error_30km, P_Value_30km)
+Balance_Check_30km_LowMon_with_fe_clu
+                                                                                                                                        
+print(xtable(Balance_Check_30km_LowMon_with_fe_clu, caption="Balance Check on Covariats used by Lowes and Montero (2020) (30km)", digits=c(0,0,2,2,3,3), auto = TRUE, type= "latex"))
+
+# Combinging Balance table for 60km and 30km. 
+Balance_Check_mean_LowMon_60km_30km_with_Fe_clu_err <- merge(Balance_Check_60km_LowMon_with_fe_clu, Balance_Check_30km_LowMon_with_fe_clu, by = "Rownames", sort= FALSE)
+Balance_Check_mean_LowMon_60km_30km_with_Fe_clu_err
+```
+
+
+
+```{r}
+##########################################################################################################
+#Creating the final combined table for the mean values
+##########################################################################################################
+
+#Combining the geocovariables mean table with the Lowes_Montero mean table. 
+Balance_Table_mean_final <- rbind(Balance_Check_mean_60km_30km_with_Fe_clu_err,Balance_Check_mean_LowMon_60km_30km_with_Fe_clu_err)
+#Removing redundant variables
+Balance_Table_mean_final <- Balance_Table_mean_final %>% subset (Rownames != "Annual Precipitation 2015" & Rownames != "Malaria Incidence 2015" & Rownames != "Slope" & Rownames != "Population Density African pop." & Rownames != "Population Density Landscan" & Rownames != "Hereditary Local Headman Selection" & Rownames != "Proximity to National Borders")
+rownames(Balance_Table_mean_final) <- Balance_Table_mean_final$Rownames
+Balance_Table_mean_final$Rownames <- NULL
+Balance_Table_mean_final
+
+Balance_Table_mean_final <- Balance_Table_mean_final[c(1,2,3,4,5,6,9,8,7,10,11,15,14,12,13,16,17,20,18,19,22,21,24,23,25,26),]
+
+Balance_Table_mean_final
+
+#Creating the final table with all Mean Values for 60km and 30km.
+Balance_Table_mean_final_kable <- kable(Balance_Table_mean_final, caption = "Balance table for Mean Values", booktabs = T, digits=3, escape = F, col.names = linebreak(c("Mean\n Inside","Mean\n Outside","Standard\n Error", "P-Value","Mean\nInside","Mean\n Outside","Standard\n Error", "P-Value"), align = "c"), "latex") %>% add_header_above(c(" "= 1, "Balance Check Mean Values 60km" = 4, "Balance Check Mean Values 30km" = 4))  %>% kable_styling(latex_options = c("striped","hold_position","scale_down","repeat_header")) %>% pack_rows("DHS Covariables", 1, 10, latex_gap_space = "1em") %>% pack_rows("Further Geographic Covariables", 11, 20, latex_gap_space = "1em") %>% pack_rows("Colonial Covariables", 21, 26,latex_gap_space = "1em") %>%
+footnote(general = " Columns 1 and 2 show the mean values of the corresponding variable for inside and outside the concession areas, considering a 60 km bandwidth. The associated standard errors and p-values for the difference of those means are reported in columns 3 and 4. The same pattern is applied to a bandwidth of 30 km in columns 5 - 8. Standard errors are clustered at the DHS cluster level for sociological variables, at the territory level for geographic variables or at ethnic group level for colonial variables. The RD regressions include concession fixed effects. More information on the variable definitions and data sources can be found in Appendix.", threeparttable = T)
+              
+kableExtra::save_kable(Balance_Table_mean_final_kable, file = "Balance_table_mean_final.tex")             
+#print(xtable(Balance_Table_mean_final, caption="Balance Check on Covariats for 60km and 30km", digits=c(0,0,2,2,3,3,2,2,3,3), auto = TRUE, type= "latex"))
+```
+ 
+
+
+
+```{r}
+###########################################################################################################
+# TseTse fly check
+# Checking when the balance check estimate for Tsetse fly suitability is not significant
+###########################################################################################################
+
+
+attach(Unco_Lowes_Rubber_all_important_Var)
+
+#Choosing rectangular kernel
+rd_est_tse_tse_fly_test_rectangular_60 <- rd_est(formula = tsi_grid_tsi ~ dist_concess_bord_cen_km |  Brabanta +  Elisabetha + Flandria + Lusanga,  data=Unco_Lowes_Rubber_all_important_Var, bw = 60, cluster = terr_name, less= TRUE, t.design = "l", kernel = "rectangular")
+summary(rd_est_tse_tse_fly_test_rectangular_60)   
+
+rd_est_tse_tse_fly_test_rectangular_30 <- rd_est(formula = tsi_grid_tsi ~ dist_concess_bord_cen_km |  Brabanta +  Elisabetha + Flandria + Lusanga,  data=Unco_Lowes_Rubber_all_important_Var, bw = 30, cluster = terr_name, less= TRUE, t.design = "l", kernel = "rectangular")
+summary(rd_est_tse_tse_fly_test_rectangular_30) 
+
+
+#RD regression without fixed effects
+rd_est_tse_tse_fly_test_without_fixed_effects_60 <- rd_est(formula = tsi_grid_tsi ~ dist_concess_bord_cen_km,  data=Unco_Lowes_Rubber_all_important_Var , bw = 60, cluster = terr_name, less= TRUE, t.design = "l", kernel = "triangular")
+summary(rd_est_tse_tse_fly_test_without_fixed_effects_60)   
+
+rd_est_tse_tse_fly_test_without_fixed_effects_30 <- rd_est(formula = tsi_grid_tsi ~ dist_concess_bord_cen_km,  data=Unco_Lowes_Rubber_all_important_Var, bw = 30, cluster = terr_name, less= TRUE, t.design = "l", kernel = "triangular")
+summary(rd_est_tse_tse_fly_test_without_fixed_effects_30)
+detach(Unco_Lowes_Rubber_all_important_Var)
+
+
+```
+
+
+
+```{r}
+
+########################################################################################################
+# Balance Check with RD coefficients (60 km) for Covariates used by Lowes and Montero (2020), 
+# using  clustered errors and fixed effects. ########################################################################################################
+
+
+# RDD loop for for geovariables  mostly used by Lowes and Montero (2020).
+attach(Unco_Lowes_Rubber_all_important_Var)
+dv_Lcov_terr <- c("ALT", "prec_WCD_mean", "prec_WCD_std", "land_suit", "ruggedness_mean", "malaria_suit", "tsi_grid_tsi", "dist_kin","dist_sea", "afpop00_mean", "LS_mean", "road_density_2", "Miss_1924","Inside_AA")
+for(i in 1:length(dv_Lcov_terr)){
+model <- paste("rd_est_",dv_Lcov_terr[i], sep="")
+m <- rd_est(formula = as.formula(paste(dv_Lcov_terr[i],"~ dist_concess_bord_cen_km |  Brabanta +  Elisabetha + Flandria + Lusanga")),  data=Unco_Lowes_Rubber_all_important_Var, bw = 60, cluster = terr_name, less= TRUE, t.design = "l")
+assign(model,m)
+}
+detach(Unco_Lowes_Rubber_all_important_Var)
+
+
+
+# RDD loop for colonial variables, also extracted from Lowes and Montero (2020). 
+attach(Unco_Lowes_Rubber_all_important_Var)
+dv_Lcov_mur_name <- c("atlantic_all_years", "ln_popd_murdock", "central", "polygonous","hereditary")
+for(i in 1:length(dv_Lcov_mur_name)){
+model <- paste("rd_est_",dv_Lcov_mur_name[i], sep="")
+m <- rd_est(formula = as.formula(paste(dv_Lcov_mur_name[i],"~ dist_concess_bord_cen_km |  Brabanta +  Elisabetha + Flandria + Lusanga")),  data=Unco_Lowes_Rubber_all_important_Var, bw = 60, cluster = murdock_name, less= TRUE, t.design = "l")
+assign(model,m)
+}
+detach(Unco_Lowes_Rubber_all_important_Var)
+
+
+
+
+RDD_coeffecient_balance_check_60km <- c(rd_est_ALT$est[2],
+                                        rd_est_prec_WCD_mean$est[2],
+                                        rd_est_prec_WCD_std$est[2],
+                                        rd_est_land_suit$est[2],
+                                        rd_est_ruggedness_mean$est[2],
+                                        rd_est_malaria_suit$est[2],
+                                        rd_est_tsi_grid_tsi$est[2],
+                                        rd_est_dist_kin$est[2],
+                                        rd_est_dist_sea$est[2],
+                                        rd_est_afpop00_mean$est[2],
+                                        rd_est_LS_mean$est[2],
+                                        rd_est_road_density_2$est[2],
+                                        rd_est_Miss_1924$est[2],
+                                        rd_est_Inside_AA$est[2],
+                                        rd_est_atlantic_all_years$est[2],
+                                        rd_est_ln_popd_murdock$est[2],
+                                        rd_est_central$est[2],
+                                        rd_est_polygonous$est[2],
+                                        rd_est_hereditary$est[2])
+                                        
+                                
+                
+RDD_standard_errors_balance_check_60km <- c(rd_est_ALT$se[2],  
+                                        rd_est_prec_WCD_mean$se[2],  
+                                        rd_est_prec_WCD_std$se[2],
+                                        rd_est_land_suit$se[2],    
+                                        rd_est_ruggedness_mean$se[2],  
+                                        rd_est_malaria_suit$se[2],  
+                                        rd_est_tsi_grid_tsi$se[2],  
+                                        rd_est_dist_kin$se[2],  
+                                        rd_est_dist_sea$se[2],  
+                                        rd_est_afpop00_mean$se[2],  
+                                        rd_est_LS_mean$se[2], 
+                                        rd_est_road_density_2$se[2], 
+                                        rd_est_Miss_1924$se[2],
+                                        rd_est_Inside_AA$se[2],
+                                        rd_est_atlantic_all_years$se[2],
+                                        rd_est_ln_popd_murdock$se[2],
+                                        rd_est_central$se[2],
+                                        rd_est_polygonous$se[2],  
+                                       rd_est_hereditary$se[2])
+
+   
+RDD_pvalues_balance_check_60km <- c(rd_est_ALT$p[2],   
+                                        rd_est_prec_WCD_mean$p[2],   
+                                        rd_est_prec_WCD_std$p[2], 
+                                        rd_est_land_suit$p[2],     
+                                        rd_est_ruggedness_mean$p[2],   
+                                        rd_est_malaria_suit$p[2],   
+                                        rd_est_tsi_grid_tsi$p[2],  
+                                        rd_est_dist_kin$p[2], 
+                                        rd_est_dist_sea$p[2],   
+                                        rd_est_afpop00_mean$p[2],   
+                                        rd_est_LS_mean$p[2], 
+                                        rd_est_road_density_2$p[2], 
+                                        rd_est_Miss_1924$p[2],   
+                                        rd_est_Inside_AA$p[2], 
+                                        rd_est_atlantic_all_years$p[2], 
+                                        rd_est_ln_popd_murdock$p[2], 
+                                        rd_est_central$p[2], 
+                                        rd_est_polygonous$p[2],   
+                                        rd_est_hereditary$p[2])
+
+
+Rownames <- c("Elevation", "Average Rainfall", "Standard Deviation Rainfall", "Land Suitability", "Ruggedness", 
+              "Malaria Suitability", "TseTse Fly Suitability", "Distance to Kinshasa","Distance to Coast", "Population Density African pop.", "Population Density Landscan", "Road Density", "Missionary Stations 1924","Inside AA","Number Enslaved in 1000","Precolonial Population Density","Centralization","Polygynous", "Hereditary Local Headman Selection") 
+
+RDD_Covariats_LowMon_Balance_Check_60km <- data.frame(Rownames, RDD_coeffecient_balance_check_60km, RDD_standard_errors_balance_check_60km,  RDD_pvalues_balance_check_60km)
+RDD_Covariats_LowMon_Balance_Check_60km
+
+print(xtable(RDD_Covariats_Balance_Check_60km, caption="RD Estimates for Covariats from Lowes and Montero (2020) (60km)", digits=c(0,0,3,3,3), auto = TRUE, type= "latex"))
+```
+
+```{r}
+
+########################################################################################################
+# Balance Check with RDD coefficients (30 km) for covariates used by Lowes and Montero (2020), 
+# using  clustered errors and fixed effects.
+########################################################################################################
+
+
+# RDD loop for for geovariables  mostly used by Lowes and Montero (2020).
+attach(Unco_Lowes_Rubber_all_important_Var)
+dv_Lcov_terr <- c("ALT", "prec_WCD_mean", "prec_WCD_std", "land_suit", "ruggedness_mean", "malaria_suit", "tsi_grid_tsi", "dist_kin","dist_sea", "afpop00_mean", "LS_mean", "road_density_2", "Miss_1924","Inside_AA")
+for(i in 1:length(dv_Lcov_terr)){
+model <- paste("rd_est_",dv_Lcov_terr[i], sep="")
+m <- rd_est(formula = as.formula(paste(dv_Lcov_terr[i],"~ dist_concess_bord_cen_km |  Brabanta +  Elisabetha + Flandria + Lusanga")),  data=Unco_Lowes_Rubber_all_important_Var, bw = 30, cluster = terr_name, less= TRUE, t.design = "l")
+assign(model,m)
+}
+detach(Unco_Lowes_Rubber_all_important_Var)
+
+
+
+# RDD loop for colonial variables, also extracted from Lowes and Montero (2020). 
+attach(Unco_Lowes_Rubber_all_important_Var)
+dv_Lcov_mur_name <- c("atlantic_all_years", "ln_popd_murdock", "central", "polygonous","hereditary")
+for(i in 1:length(dv_Lcov_mur_name)){
+model <- paste("rd_est_",dv_Lcov_mur_name[i], sep="")
+m <- rd_est(formula = as.formula(paste(dv_Lcov_mur_name[i],"~ dist_concess_bord_cen_km |  Brabanta +  Elisabetha + Flandria + Lusanga")),  data=Unco_Lowes_Rubber_all_important_Var, bw = 30, cluster = murdock_name, less= TRUE, t.design = "l")
+assign(model,m)
+}
+detach(Unco_Lowes_Rubber_all_important_Var)
+
+
+
+
+RDD_coeffecient_balance_check_30km <- c(rd_est_ALT$est[2],
+                                        rd_est_prec_WCD_mean$est[2],
+                                        rd_est_prec_WCD_std$est[2],
+                                        rd_est_land_suit$est[2],
+                                        rd_est_ruggedness_mean$est[2],
+                                        rd_est_malaria_suit$est[2],
+                                        rd_est_tsi_grid_tsi$est[2],
+                                        rd_est_dist_kin$est[2],
+                                        rd_est_dist_sea$est[2],
+                                        rd_est_afpop00_mean$est[2],
+                                        rd_est_LS_mean$est[2],
+                                        rd_est_road_density_2$est[2],
+                                        rd_est_Miss_1924$est[2],
+                                        rd_est_Inside_AA$est[2],
+                                        rd_est_atlantic_all_years$est[2],
+                                        rd_est_ln_popd_murdock$est[2],
+                                        rd_est_central$est[2],
+                                        rd_est_polygonous$est[2],
+                                        rd_est_hereditary$est[2])
+                                        
+                                
+                
+RDD_standard_errors_balance_check_30km <- c(rd_est_ALT$se[2],  
+                                        rd_est_prec_WCD_mean$se[2],  
+                                        rd_est_prec_WCD_std$se[2],
+                                        rd_est_land_suit$se[2],    
+                                        rd_est_ruggedness_mean$se[2],  
+                                        rd_est_malaria_suit$se[2],  
+                                        rd_est_tsi_grid_tsi$se[2],  
+                                        rd_est_dist_kin$se[2],  
+                                        rd_est_dist_sea$se[2],  
+                                        rd_est_afpop00_mean$se[2],  
+                                        rd_est_LS_mean$se[2], 
+                                        rd_est_road_density_2$se[2], 
+                                        rd_est_Miss_1924$se[2],  
+                                        rd_est_Inside_AA$se[2],
+                                        rd_est_atlantic_all_years$se[2],
+                                        rd_est_ln_popd_murdock$se[2],
+                                        rd_est_central$se[2],
+                                        rd_est_polygonous$se[2],  
+                                       rd_est_hereditary$se[2])
+
+   
+RDD_pvalues_balance_check_30km <- c(rd_est_ALT$p[2],   
+                                        rd_est_prec_WCD_mean$p[2],   
+                                        rd_est_prec_WCD_std$p[2], 
+                                        rd_est_land_suit$p[2],     
+                                        rd_est_ruggedness_mean$p[2],   
+                                        rd_est_malaria_suit$p[2],   
+                                        rd_est_tsi_grid_tsi$p[2],  
+                                        rd_est_dist_kin$p[2], 
+                                        rd_est_dist_sea$p[2],   
+                                        rd_est_afpop00_mean$p[2],   
+                                        rd_est_LS_mean$p[2], 
+                                        rd_est_road_density_2$p[2], 
+                                        rd_est_Miss_1924$p[2], 
+                                        rd_est_Inside_AA$p[2], 
+                                        rd_est_atlantic_all_years$p[2], 
+                                        rd_est_ln_popd_murdock$p[2], 
+                                        rd_est_central$p[2], 
+                                        rd_est_polygonous$p[2],   
+                                        rd_est_hereditary$p[2])
+
+
+Rownames <- c("Elevation", "Average Rainfall", "Standard Deviation Rainfall", "Land Suitability", "Ruggedness", 
+              "Malaria Suitability", "TseTse Fly Suitability", "Distance to Kinshasa","Distance to Coast", "Population Density African pop.", "Population Density Landscan", "Road Density", "Missionary Stations 1924","Inside AA","Number Enslaved in 1000","Precolonial Population Density","Centralization","Polygynous", "Hereditary Local Headman Selection") 
+
+RDD_Covariats_LowMon_Balance_Check_30km <- data.frame(Rownames, RDD_coeffecient_balance_check_30km, RDD_standard_errors_balance_check_30km,  RDD_pvalues_balance_check_30km)
+RDD_Covariats_LowMon_Balance_Check_30km
+
+# Combinging Balance table for 60km and 30km. 
+Balance_Check_RDD_Coefficients_LowMon_60km_30km_with_Fe_clu_err <- merge(RDD_Covariats_LowMon_Balance_Check_60km, RDD_Covariats_LowMon_Balance_Check_30km, by = "Rownames", sort= FALSE)
+Balance_Check_RDD_Coefficients_LowMon_60km_30km_with_Fe_clu_err
+
+
+print(xtable(RDD_Covariats_Balance_Check_60km, caption="RD Estimates for Covariats from Lowes and Montero (2020) (30km)", digits=c(0,0,3,3,3), auto = TRUE, type= "latex"))
+```
+
+
+
+```{r}
+##########################################################################################################
+#Creating the final combined table for the RDD Coefficients.
+##########################################################################################################
+
+#Combining the Geocovariables Mean Table with the LowMon Mean Table. 
+Balance_Table_RDD_Coefficients_final <- rbind(Balance_Check_RDD_Coefficient_60km_30km_with_Fe_clu_err,Balance_Check_RDD_Coefficients_LowMon_60km_30km_with_Fe_clu_err)
+
+#Removing redundant variables.
+Balance_Table_RDD_Coefficients_final <- Balance_Table_RDD_Coefficients_final %>% subset (Rownames != "Annual Precipitation 2015" & Rownames != "Malaria Incidence 2015" & Rownames != "Slope" & Rownames != "Population Density African pop." & Rownames != "Population Density Landscan" & Rownames != "Hereditary Local Headman Selection" & Rownames != "Proximity to National Borders")
+rownames(Balance_Table_RDD_Coefficients_final) <- Balance_Table_RDD_Coefficients_final$Rownames
+Balance_Table_RDD_Coefficients_final$Rownames <- NULL
+
+# Changing the order of the rows. 
+Balance_Table_RDD_Coefficients_final <- Balance_Table_RDD_Coefficients_final[c(1,2,3,4,5,6,9,8,7,10,11,15,14,12,13,16,17,20,18,19,22,21,24,23,25,26),]
+
+Balance_Table_RDD_Coefficients_final
+
+
+#Creating the final table with all Mean Values for 60km and 30km
+Balance_Table_RDD_Coefficients_final_kable <- kable(Balance_Table_RDD_Coefficients_final, caption = "Balance Table for RD Coefficients", booktabs = T, digits=3, escape = F, col.names = linebreak(c("RD\n Coefficient","Standard\n Error", "P-Value","RD\n Coefficient","Standard\n Error", "P-Value"), align = "c"), "latex") %>% add_header_above(c(" "= 1, "Balance Check RD Estimates 60km" = 3, "Balance Check RD Estimates 30km" = 3))  %>% kable_styling(latex_options = c("striped","hold_position","scale_down","repeat_header")) %>% pack_rows("DHS Covariables", 1, 10, latex_gap_space = "1em") %>% pack_rows("Further Geographic Covariables", 11, 20, latex_gap_space = "1em") %>% pack_rows("Colonial Covariables", 21, 26,latex_gap_space = "1em") %>% footnote(general = "Column 1 shows the RD coefficient of the corresponding variable for a bandwidth of 60 km. The associated standard errors and p-values are reported in columns 2 and 3. The same pattern is applied to a bandwidth of 30 km in columns 4 - 6. Standard errors are clustered at the DHS cluster level for sociological variables, at the territory level for geographic variables or at ethnic group level for colonial variables. The same RD estimation procedure as for the main results is used, incorporating fixed effects and a triangular kernel. More information on the variable definitions and data sources can be found in Appendix.", threeparttable = T)
+              
+kableExtra::save_kable(Balance_Table_RDD_Coefficients_final_kable, file = "Balance_table_RDD_Coefficients_final.tex")             
+
+```
+
+
+
+
+
+
+
+
+
+```{r}
+####################################################################
+# Several additional Checks. 
+####################################################################
+```
+
+```{r}
+#Here the labels are visible for the territories. 
+# Unfortunately, the labels are not taken over. 
+Lowes_grid_addGeoBalance.dta <- read_dta(".../grid_addGeoBalance.dta")
+Lowes_grid_addGeoBalance.dta$terr_name
+
+Unco_DS_final %>% count(terr_name, DHS_Cluster_adj)
+
+
+```
+
+
+```{r}
+#Checking how many villages are located in the palm oil concessions and in the former rubber concessions. 
+Unco_Lowes_Rubber_all_important_Var_60km %>% count(within.con, Inside_AA, Area_Con)
+Unco_Lowes_Rubber_all_important_Var_60km %>% count(within.con, Inside_AA)
+
+Unco_Lowes_Rubber_all_important_Var_30km %>% count(within.con, Inside_AA, Area_Con)
+Unco_Lowes_Rubber_all_important_Var_30km %>% count(within.con, Inside_AA)
+```
+
+
+```{r}
+#Checking how many observations for colonial populationd density per bandwidth exist. 
+Unco_Lowes_Rubber_all_important_Var_60km %>% count(ln_popd_murdock, murdock_name, within.con, Area_Con)
+Unco_Lowes_Rubber_all_important_Var_30km %>% count(ln_popd_murdock, murdock_name, within.con,)
+
+
+#Checking how many observations for hereditary local headmen selection per bandwidth exist. 
+
+Unco_Lowes_Rubber_all_important_Var_60km %>% count(hereditary, murdock_name, within.con, Area_Con)
+Unco_Lowes_Rubber_all_important_Var_30km %>% count(hereditary, murdock_name, within.con)
+
+#Checking the number of observations for inside AA.
+Unco_DS_final_60km %>% count(within.con, Inside_AA, DHS_Cluster_adj, Area_Con)
+
+#Checking the number of observations for number of enslaved.
+
+Unco_Lowes_Rubber_all_important_Var_30km %>% count(atlantic_all_years, within.con, Area_Con, DHS_Cluster_adj, atlantic_all_years)
+
+```
+
+
+
+
+```{r}
+###########################################################################################################
+#Checking whtether the pre-colonial data used by Lowes and Montero (2020) is right!
+###########################################################################################################
+# Since some pre-colonial data do show "NA" or "0", it has to be checked whether these values are just left out since the are not important for the concessions examinded by Lowes and Montero (2020). However, all the pre-colonial data used by Lowes and Montero (2020) can also be used for every DHS cluster in the Congo.
+
+# The Geovariables used by Lowes and Montero and used in this thesis do show a value for every DHS cluster that is important for the Lever Brothers palm oil concessions! 
+# Those that show several "0" are not used. Road density of 2010 is used since only one value for the 60 km bandwidth is missing. This missing value for cluster 707 is replaced with "NA". 
+
+
+# ln_pop_murdock was taken over from Alsan (2015) and is also used by Lowes and Montero (2020). 
+# All values are correct in the Lowes_Montero Dataset
+Alsan_precolonial_data <- read_dta('//ug-uyst-ba-cifs.student.uni-goettingen.de/home/users/dominik.bantel/Eigene Dateien/Replication Package Palm Oil Concessions Belgian Congo/Datasets/precolonial.dta')
+Alsan_precolonial_data %>% count(name, ln_popd_murdock)
+Alsan_precolonial_data %>% count(name, central)
+
+Unco_Lowes_Rubber_all_important_Var_60km %>% count(murdock_name, ln_popd_murdock)
+
+
+Alsan_precolonial_data %>% count(name, central)
+Unco_Lowes_Rubber_all_important_Var_60km %>% count(murdock_name, central)
+# NGandu  and  Soko do not exist in the Alsan dataset. They also marked as "NA" in Lowes and Montero (2020)dataset.
+# The data for the variable central are also correct! This variable is also modified by Alsan (2015). 
+
+
+Unco_Lowes_Rubber_all_important_Var_60km %>% count(murdock_name, hereditary)
+# Info: There two tribes called Kwese and Kwere. For hereditary: The Data is correct. It is either patrilineal or matrilineal in the Ethnic Atlas.
+# The original Data can be accessed here under https://d-place.org/contributions/EA and the variable EA072
+
+Unco_Lowes_Rubber_all_important_Var_60km %>% count(murdock_name, polygonous)
+# This does also align with the data by Murdock. The variable EA08 reflects polygamy. 
+
+
+
+# The data about numbers of extracted slaves can be obrtained on the following website: 
+#https://scholar.harvard.edu/nunn/pages/data-0. The data set is used in Nunn and Wantchekon (2011)
+# This data is also correct. 
+tribe_level_slave_exports_Atlantic_Indian.dta <- read_dta('//ug-uyst-ba-cifs.student.uni-goettingen.de/home/users/dominik.bantel/Eigene Dateien/Replication Package Palm Oil Concessions Belgian Congo/Datasets/tribe_level_slave_exports_Atlantic_Indian.dta')
+
+tribe_level_slave_exports_Atlantic_Indian.dta %>% count(murdock_name, atlantic_all_years)
+
+Unco_Lowes_Rubber_all_important_Var_60km %>% count(murdock_name, atlantic_all_years)
+
+
+
+
+
+# Checking that the variables provided by Lowes and Montero are available for the entire Kongo
+Lowes_balance_var_DHS_aladj_original.dta <- read_dta('//ug-uyst-ba-cifs.student.uni-goettingen.de/home/users/dominik.bantel/Eigene Dateien/Replication Package Palm Oil Concessions Belgian Congo/Datasets/Lowes_balance_var_DHS.dta')
+
+#Choosing important variables.
+Chovar_Lowes_balance_var_DHS_aladj.dta <- Lowes_balance_var_DHS_aladj_original.dta[,c('objectid','DHSCLUST','DHSYEAR','ALT', 'mean_rain', 'prec_WCD_std','land_suit', 'ruggedness_mean',  'nav_river_density', 'nav_river', 'River', 'malaria_suit', 'tsi_grid_tsi',  'dist_kin', 'dist_sea', 'atlantic_all_years', 'murdock_pop','ln_popd_murdock', 'central', 'polygonous', 'hereditary','murdock_name','MURDOCK_TRIBE_CODE','MURDOCK_LAT','MURDOCK_LON','land_area' )]
+
+Chovar_Lowes_balance_var_DHS_aladj.dta <- Chovar_Lowes_balance_var_DHS_aladj.dta %>% mutate(DHS_Cluster_adj = ifelse(DHSYEAR == 2007, (DHSCLUST*100) + 07, (DHSCLUST*100) + 13))
+Chovar_Lowes_balance_var_DHS_aladj.dta <- Chovar_Lowes_balance_var_DHS_aladj.dta %>% relocate(DHS_Cluster_adj, .after= DHSCLUST)
+
+# When running this code, DHS Clusters will also appear that are not close the the Concessions considered by Lowes and Montero (2020). QGIS shows that precolonial data are available for DHS location in the entire area of the Kongo. 
+Chovar_Lowes_balance_var_DHS_aladj.dta %>% count(DHS_Cluster_adj, murdock_name, atlantic_all_years, ln_popd_murdock, central, polygonous, hereditary)
+```
+
+
+
+```{r}
+#Checking how many observations for  the ln_popd_murdock variable is available.
+Unco_Lowes_Rubber_all_important_Var_30km %>% count(murdock_name, DHS_Cluster_adj, ln_popd_murdock, within.con)
+```
+
+
+
+```{r}
+#Checking why tsi_grid_tsi rd estimate for balance checks is significant. 
+
+#When using rectangular kernel the p-value is 0.5101.     
+
+attach(Unco_Lowes_Rubber_all_important_Var)
+rd_est_tsi_grid_tsi_test60 <- rd_est(formula = tsi_grid_tsi ~ dist_concess_bord_cen_km |  Brabanta +  Elisabetha + Flandria + Lusanga,
+data=Unco_Lowes_Rubber_all_important_Var, bw = 60, cluster = terr_name, less= TRUE, t.design = "l", kernel = "rectangular" )
+summary(rd_est_tsi_grid_tsi_test60)
+detach(Unco_Lowes_Rubber_all_important_Var)
+
+
+# Rectangular kernel yields a p-value of 0.05398. 
+attach(Unco_Lowes_Rubber_all_important_Var)
+rd_est_tsi_grid_tsi_test30 <- rd_est(formula = tsi_grid_tsi ~ dist_concess_bord_cen_km |  Brabanta +  Elisabetha + Flandria + Lusanga,
+data=Unco_Lowes_Rubber_all_important_Var, bw = 30, cluster = terr_name, less= TRUE, t.design = "l", kernel = "rectangular" )
+summary(rd_est_tsi_grid_tsi_test30)
+detach(Unco_Lowes_Rubber_all_important_Var)
+
+
+Unco_Lowes_Rubber_all_important_Var_60km <- Unco_Lowes_Rubber_all_important_Var_60km %>% mutate(wtri_60 =  (60 - dist_concess_bord_km)/60)
+
+balance_check_RDD_Coeff_60_km_tsi_grid_tsi_test <- lm_robust(tsi_grid_tsi ~ within.con*dist_concess_bord_cen, data = Unco_Lowes_Rubber_all_important_Var_60km, clusters = terr_name, fixed_effects = ~ Area_Con, weights= wtri_60, se_type = "stata")
+summary(balance_check_RDD_Coeff_60_km_tsi_grid_tsi_test )
+
+
+```
+
+
+```{r}
+#Checking why dist_coast rd estimate for balance checks is significant. 
+
+#When using rectangular kernel the p-value is 0.07051.        
+
+attach(Unco_Lowes_Rubber_all_important_Var)
+rd_est_tsi_grid_tsi_test60 <- rd_est(formula = dist_sea ~ dist_concess_bord_cen_km |  Brabanta +  Elisabetha + Flandria + Lusanga,
+data=Unco_Lowes_Rubber_all_important_Var, bw = 60, cluster = terr_name, less= TRUE, t.design = "l", kernel = "rectangular" )
+summary(rd_est_tsi_grid_tsi_test60)
+detach(Unco_Lowes_Rubber_all_important_Var)
+
+
+# Rectangular kernel yields a p-value of 0.01871, which is still significant at a 5 percent level. 
+attach(Unco_Lowes_Rubber_all_important_Var)
+rd_est_tsi_grid_tsi_test30 <- rd_est(formula = dist_sea ~ dist_concess_bord_cen_km |  Brabanta +  Elisabetha + Flandria + Lusanga,
+data=Unco_Lowes_Rubber_all_important_Var, bw = 30, cluster = terr_name, less= TRUE, t.design = "l", kernel = "rectangular" )
+summary(rd_est_tsi_grid_tsi_test30)
+detach(Unco_Lowes_Rubber_all_important_Var)
+
+
+Unco_Lowes_Rubber_all_important_Var_60km <- Unco_Lowes_Rubber_all_important_Var_60km %>% mutate(wtri_60 =  (60 - dist_concess_bord_km)/60)
+
+balance_check_RDD_Coeff_60_km_tsi_grid_tsi_test <- lm_robust(dist_sea ~ within.con*dist_concess_bord_cen, data = Unco_Lowes_Rubber_all_important_Var_60km, clusters = terr_name, fixed_effects = ~ Area_Con, weights= wtri_60, se_type = "stata")
+summary(balance_check_RDD_Coeff_60_km_tsi_grid_tsi_test )
+
+
+```
+
+
+
+
+
+
+
