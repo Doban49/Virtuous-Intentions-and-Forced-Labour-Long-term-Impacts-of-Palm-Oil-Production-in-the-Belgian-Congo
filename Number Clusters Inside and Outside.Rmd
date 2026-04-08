@@ -1,0 +1,78 @@
+---
+title: "Number Clusters Inside and Outside the Concessions"
+author: "DB"
+date: "2024-01-19"
+output: pdf_document
+---
+
+```{r}
+library(modelsummary)
+library(kableExtra)
+library(gt)
+library(estimatr)
+library(rdrobust)
+library(rddtools)
+library(haven)
+library(Hmisc)
+library(tidyverse)
+library(rddapp)
+library(mosaic)
+
+``` 
+
+```{r}
+rm(list = ls())
+```
+
+
+
+
+
+```{r}
+
+Dist_Geocov_final <- read.csv('.../Replication Package Palm Oil Concessions Belgian Congo/Datasets/Dist_Geocov_final.csv', header=TRUE)
+
+Dist_Geocov_final_60km <- Dist_Geocov_final %>% 
+  filter(dist_concess_bord < 60000)
+Dist_Geocov_final_30km <- Dist_Geocov_final %>% 
+  filter(dist_concess_bord < 30000)
+
+```
+
+
+
+
+```{r}
+###########################################################################
+# Creating the table for number of Cluster per bandwidth. 
+###########################################################################
+Concess_per_circle_60km <- Dist_Geocov_final_60km %>% count(Area_Con, within.con)
+Concess_per_circle_30km <- Dist_Geocov_final_30km %>% count(Area_Con, within.con)
+
+
+Rownames_Circles <- c("Alberta", "Brabanta", "Elisabetha", "Flandria", "Lusanga")
+
+Number_Cluster_Outside_60km <- c(Concess_per_circle_60km$n[1],Concess_per_circle_60km$n[3],Concess_per_circle_60km$n[5],Concess_per_circle_60km$n[7],Concess_per_circle_60km$n[9])
+
+Number_Cluster_Inside_60km <- c(Concess_per_circle_60km$n[2],Concess_per_circle_60km$n[4],Concess_per_circle_60km$n[6],Concess_per_circle_60km$n[8],Concess_per_circle_60km$n[10])
+
+Number_Cluster_Outside_30km <- c(Concess_per_circle_30km$n[1],0,Concess_per_circle_30km$n[4],Concess_per_circle_30km$n[5],Concess_per_circle_30km$n[7])
+
+Number_Cluster_Inside_30km <- c(Concess_per_circle_30km$n[2],Concess_per_circle_30km$n[3],0,Concess_per_circle_30km$n[6],Concess_per_circle_30km$n[8])
+
+Table_number_Cluster_Inside_Outside_for_60km_30km <- data.frame(Rownames_Circles, Number_Cluster_Inside_60km, Number_Cluster_Outside_60km, Number_Cluster_Inside_30km, Number_Cluster_Outside_30km)
+Table_number_Cluster_Inside_Outside_for_60km_30km
+
+Table_Num_Cluster_per_Bandwidth <- kable(Table_number_Cluster_Inside_Outside_for_60km_30km, caption = "Number of DHS Clusters Inside and Outside the Concession Areas", booktabs = T, escape = F, align = "lcccc", col.names = c("Concession Area","Inside","Outside", "Inside","Outside"),  "latex") %>% add_header_above(c(" "= 1, "Number of Clusters (60 km)" = 2, "Number of Clusters (60 km)" = 2), align = "c")  %>% kable_styling(latex_options = c("hold_position","scale_down","repeat_header")) %>% 
+footnote(general = "Beispieltext", threeparttable = T)
+              
+kableExtra::save_kable(Table_Num_Cluster_per_Bandwidth, file = "Table_Num_Cluster_per_Bandwidth.tex")  
+```
+
+
+
+
+
+
+
+
