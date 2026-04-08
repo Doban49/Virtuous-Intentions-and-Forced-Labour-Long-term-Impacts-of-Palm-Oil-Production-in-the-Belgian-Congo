@@ -1,0 +1,412 @@
+---
+title: "RDD Main Results with a Quadratic Polynomial"
+author: "DB"
+date: "2023-12-22"
+output: pdf_document
+---
+
+```{r}
+library(modelsummary)
+library(kableExtra)
+library(gt)
+library(estimatr)
+library(rdrobust)
+library(rddtools)
+library(haven)
+library(Hmisc)
+library(tidyverse)
+library(rddapp)
+library(mosaic)
+
+``` 
+
+```{r}
+rm(list = ls())
+```
+
+
+
+```{r}
+Unco_DS_final<- read.csv(".../Replication Package Palm Oil Concessions Belgian Congo/Datasets/Unco_DS_final.csv", header=TRUE)
+
+# Since the rd_est does not include the option to apply a quadratic polynomial, the following steps are taken to apply an quadratic polynomial.
+
+#Creating the quadratic version of the running variable so that the quadratic polynomial can be calculated. 
+Unco_DS_final <- Unco_DS_final %>%
+  mutate(quadratic_dist_concess_bord_cen_km = dist_concess_bord_cen_km^2)
+
+#Creating the interaction term between quadratic_dist_concess_board_cen_km and within.con as variable. 
+Unco_DS_final <- Unco_DS_final %>% mutate(quadratic_dist_concess_bord_cen_km_Treat_Interact = ifelse(within.con == 1, quadratic_dist_concess_bord_cen_km, 0))
+
+# These new variables are added to red_est regression as covariables. 
+
+
+DHS_Children_final <- read.csv('.../Replication Package Palm Oil Concessions Belgian Congo/Datasets/DHS_Children_final.csv', header=TRUE)
+
+#Crating the quadratic version of running variable so that the quadratic polynomial can be calculated. 
+DHS_Children_final <- DHS_Children_final %>%
+  mutate(quadratic_dist_concess_bord_cen_km = dist_concess_bord_cen_km^2)
+
+#Creating the interactionterm between quadratic_dist_concess_board_cen_km and within.con as variable. 
+DHS_Children_final <- DHS_Children_final %>% mutate(quadratic_dist_concess_bord_cen_km_Treat_Interact = ifelse(within.con == 1, quadratic_dist_concess_bord_cen_km, 0))
+
+#creating the subsets
+Unco_DS_final_60km <- Unco_DS_final %>% 
+  filter(dist_concess_bord < 60000)
+Unco_DS_final_30km <- Unco_DS_final %>% 
+  filter(dist_concess_bord < 30000)
+
+```
+
+
+
+
+```{r}
+#####################################################################################
+#Checking how the rd_est command can be adapted so that it is quadratic polynomial
+####################################################################################
+
+# Creating triangular Kernel for the lm_robust command.
+Unco_DS_final <- Unco_DS_final %>% mutate(wtri_60 =  (60 - dist_concess_bord_km)/60)
+Unco_DS_final_60km <- Unco_DS_final %>% 
+  filter(dist_concess_bord < 60000)
+
+# Checking whether the rd_est and lm_robust yield the same results for a linear polynomial. 
+attach(Unco_DS_final)
+Rd_est_Wealth_index_60km <- rd_est(formula = Wealth_Index ~ dist_concess_bord_cen_km | gender + age + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = 60, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l")
+summary(Rd_est_Wealth_index_60km)
+detach(Unco_DS_final)
+
+RD_Lin_Total_Years_Education_60km <- lm_robust(Wealth_Index ~ within.con*dist_concess_bord_cen_km   + gender + age +  age_square + Dummy_Survey_Year, data = Unco_DS_final_60km, clusters = DHS_Cluster_adj, weights =  wtri_60, fixed_effects = ~ Area_Con, se_type = "stata")
+summary(RD_Lin_Total_Years_Education_60km)
+
+# Checking whether the rd_est and lm_robust yield the same results for a quadratic polynomial. 
+attach(Unco_DS_final)
+Rd_est_Wealth_index_60km <- rd_est(formula = Wealth_Index ~ dist_concess_bord_cen_km | quadratic_dist_concess_bord_cen_km + quadratic_dist_concess_bord_cen_km_Treat_Interact + gender + age + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = 60, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l")
+summary(Rd_est_Wealth_index_60km)
+detach(Unco_DS_final)
+
+
+RD_Qua_Total_Years_Education_60km <- lm_robust(Wealth_Index ~ within.con*dist_concess_bord_cen_km  + quadratic_dist_concess_bord_cen_km + within.con:quadratic_dist_concess_bord_cen_km + gender + age +  age_square + Dummy_Survey_Year, data = Unco_DS_final_60km, clusters = DHS_Cluster_adj, weights =  wtri_60, fixed_effects = ~ Area_Con, se_type = "stata")
+summary(RD_Qua_Total_Years_Education_60km)
+
+# These two methods yield the same coefficients. 
+
+```
+
+
+
+
+```{r}
+######################################################################################################################
+#RD estimates for Wealth Index and Log Wealth Index Factor Score (optimal as well as fixed bandwidth of 60km and 30km)
+# Quadratic RD polynomial
+######################################################################################################################
+
+
+attach(Unco_DS_final)
+Rd_est_Wealth_index_optimal <- rd_est(formula = Wealth_Index ~ dist_concess_bord_cen_km | quadratic_dist_concess_bord_cen_km + quadratic_dist_concess_bord_cen_km_Treat_Interact + gender + age + age_square + Dummy_Survey_Year + Brabanta +  Elisabetha + Flandria + Lusanga, data = Unco_DS_final, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l", verbose = FALSE)
+summary(Rd_est_Wealth_index_optimal)
+
+
+Rd_est_Wealth_index_60km <- rd_est(formula = Wealth_Index ~ dist_concess_bord_cen_km | quadratic_dist_concess_bord_cen_km + quadratic_dist_concess_bord_cen_km_Treat_Interact + gender + age + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = 60, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l")
+summary(Rd_est_Wealth_index_60km)
+
+Rd_est_Wealth_index_30km <- rd_est(formula = Wealth_Index ~ dist_concess_bord_cen_km | quadratic_dist_concess_bord_cen_km + quadratic_dist_concess_bord_cen_km_Treat_Interact + gender + age + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = 30, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l")
+summary(Rd_est_Wealth_index_30km)
+
+
+Rd_est_Wealth_Factor_Score_optimal <- rd_est(formula = Log_Wealth_Index_Factor_Score ~ dist_concess_bord_cen_km | quadratic_dist_concess_bord_cen_km + quadratic_dist_concess_bord_cen_km_Treat_Interact +  gender + age + age_square + Dummy_Survey_Year + Brabanta +  Elisabetha + Flandria + Lusanga, data = Unco_DS_final, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Wealth_Factor_Score_optimal)
+
+Rd_est_Wealth_Factor_Score_60km <- rd_est(formula = Log_Wealth_Index_Factor_Score ~ dist_concess_bord_cen_km | quadratic_dist_concess_bord_cen_km + quadratic_dist_concess_bord_cen_km_Treat_Interact + gender + age + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = 60, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Wealth_Factor_Score_60km)
+
+Rd_est_Wealth_Factor_Score_30km <- rd_est(formula = Log_Wealth_Index_Factor_Score ~ dist_concess_bord_cen_km | quadratic_dist_concess_bord_cen_km + quadratic_dist_concess_bord_cen_km_Treat_Interact + gender + age + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = 30, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Wealth_Factor_Score_30km)
+
+detach(Unco_DS_final)
+
+
+
+#############################################################################
+#Adjusting modelsummary_table for displaying regression table of rd_est model
+#############################################################################
+
+# Taking the less = TRUE option as default version. The following code is adapted to that! 
+
+tidy.rd <- function(x, ...) {
+    s <- summary(x, ...)
+    ret <- data.frame(
+      term      = row.names(s$coefficients),
+      estimate  = s$coefficients[, 3],
+      std.error = s$coefficients[, 4],
+      conf.low  = s$coefficients[, 5],
+      conf.high = s$coefficients[, 6])
+    ret
+}
+
+glance.rd <- function(x, ...) {
+    ret <- data.frame(
+      Bandwidth = x$bw[2],
+      nobs = x$obs[2])
+    ret
+}
+
+
+# Adjusting the robust standard errors since the default standard errors are different
+tidy_custom.rd <- function(x, ...) {
+    s <- summary(x)$coefficients
+    out <- data.frame(
+      term = row.names(s),
+      
+      estimate = s[,3],
+      std.error = s[,4],
+      p.value = s[,8])
+    return(out)
+}
+
+
+#Adding Mean Dep. Var.
+glance_custom.rd <- function(x, ...) {
+  dv <- x$model[[2]]$model$Y
+  dv_mean <- sprintf("%.3f", mean(dv, na.rm = TRUE))
+  dv_sd <- sprintf("%.3f", sd(dv, na.rm = TRUE))
+  data.table::data.table(`Mean Dep. Var.` = dv_mean, `SD Dep. Var.` = dv_sd)
+}
+
+
+# Main variable structure. 
+Var_Structure <- c("Opt" = "Inside Concession",
+                   "Usr" = "Inside Concession")
+
+#Adding further information to the table.
+Add_info_RDD <- tribble( ~term, ~OLS,  ~OLS, ~OLS, ~OLS, ~OLS, ~OLS,
+                'Bandwidth Choice', 'Optimal','Wide','Narrow','Optimal','Wide','Narrow',    
+                'Std.Errors','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster',
+                'Fixed Effects', 'X', 'X', 'X', 'X','X', 'X',
+                'Total Number Clusters', '49', '69','34', '25', '69','34',
+                'Clusters within Con. Area', '16', '23','10', '8', '23','10')
+attr(Add_info_RDD, 'position') <- c(5,7,8,9,10)
+
+#Structuring model statistics.
+gm <- tibble::tribble(
+  ~raw,        ~clean,          ~fmt,
+  "nobs",      "Num.Obs.",             0,
+  "Bandwidth", "Bandwidth", 2,
+  "Mean Dep. Var.", "Mean Dep. Var.", 3,
+  "SD Dep. Var.", "SD Dep. Var.", 3)
+
+
+
+Model_Summary_Rd_est_results <- list("RDD1" = Rd_est_Wealth_index_optimal, "RDD2" = Rd_est_Wealth_index_60km, "RDD3"= Rd_est_Wealth_index_30km, "RDD4" = Rd_est_Wealth_Factor_Score_optimal, "RDD5" = Rd_est_Wealth_Factor_Score_60km, "RDD6" = Rd_est_Wealth_Factor_Score_30km)
+
+modelsummary(Model_Summary_Rd_est_results, fmt = 4, title = "RDD Wealth", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "gt")
+
+
+
+RDD_Unco_final_table_Wealth <- modelsummary(Model_Summary_Rd_est_results, fmt = 4, title = "RDD Wealth (Quadratic RD Polynomial)", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "latex") %>%
+ add_header_above(c(" " = 1, "Wealth Index " = 3, "Log(Wealth Factor Score)" = 3))  %>% kable_styling(latex_options = c( "scale_down","hold_position"))
+
+kableExtra::save_kable(RDD_Unco_final_table_Wealth, file = "Unco_Wealth_final_quadratic_poly_table.tex")
+
+```
+
+
+```{r}
+#Checking the number of clusters inside the concessions when changing the bandwidth. 
+Unco_DS_final_optimal_1 <- Unco_DS_final %>% 
+  filter(dist_concess_bord_km < Rd_est_Wealth_index_optimal$bw[2])
+Unco_DS_final_optimal_1 %>%   group_by(within.con) %>%
+  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+Unco_DS_final_optimal_1 %>% 
+summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+
+Unco_DS_final_optimal_2 <- Unco_DS_final %>% 
+  filter(dist_concess_bord_km < Rd_est_Wealth_Factor_Score_optimal$bw[2])
+Unco_DS_final_optimal_2 %>%   group_by(within.con) %>%
+  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+Unco_DS_final_optimal_2 %>% 
+summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+
+
+Unco_DS_final_60km %>%
+  group_by(within.con) %>%
+  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+Unco_DS_final_60km %>%  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+
+Unco_DS_final_30km %>%
+  group_by(within.con) %>%
+  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+Unco_DS_final_30km %>%  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+
+```
+
+
+```{r}
+##############################################################################################################
+#RD estimates for Total Years of Education and Literacy (optimal as well as fixed bandwidth of 60km  and 30km)
+# Quadratic RD polynomial
+##############################################################################################################
+
+attach(Unco_DS_final)
+Rd_est_Total_Years_Education_optimal <- rd_est(formula = Total_Years_Education ~ dist_concess_bord_cen_km | quadratic_dist_concess_bord_cen_km + quadratic_dist_concess_bord_cen_km_Treat_Interact + gender + age + age_square + Dummy_Survey_Year + Brabanta +  Elisabetha + Flandria + Lusanga, data = Unco_DS_final, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l", verbose = FALSE)
+summary(Rd_est_Total_Years_Education_optimal)
+
+
+Rd_est_Total_Years_Education_60km <- rd_est(formula = Total_Years_Education ~ dist_concess_bord_cen_km | quadratic_dist_concess_bord_cen_km + quadratic_dist_concess_bord_cen_km_Treat_Interact + gender + age + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = 60, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l")
+summary(Rd_est_Total_Years_Education_60km)
+
+Rd_est_Total_Years_Education_30km <- rd_est(formula = Total_Years_Education ~ dist_concess_bord_cen_km | quadratic_dist_concess_bord_cen_km + quadratic_dist_concess_bord_cen_km_Treat_Interact + gender + age + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = 30, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l", kernel= "triangular")
+summary(Rd_est_Total_Years_Education_30km)
+
+
+Rd_est_Literacy_adjusted_optimal <- rd_est(formula = Literacy_adjusted ~ dist_concess_bord_cen_km | quadratic_dist_concess_bord_cen_km + quadratic_dist_concess_bord_cen_km_Treat_Interact + gender + age + age_square + Dummy_Survey_Year + Brabanta +  Elisabetha + Flandria + Lusanga, data = Unco_DS_final, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Literacy_adjusted_optimal)
+
+
+Rd_est_Literacy_adjusted_60km <- rd_est(formula = Literacy_adjusted ~ dist_concess_bord_cen_km | quadratic_dist_concess_bord_cen_km + quadratic_dist_concess_bord_cen_km_Treat_Interact + gender + age + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = 60, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Literacy_adjusted_60km)
+
+Rd_est_Literacy_adjusted_30km <- rd_est(formula = Literacy_adjusted ~ dist_concess_bord_cen_km | quadratic_dist_concess_bord_cen_km + quadratic_dist_concess_bord_cen_km_Treat_Interact + gender + age + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = 30, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Literacy_adjusted_30km)
+detach(Unco_DS_final)
+
+
+
+#Adding further information to the table.
+Add_info_RDD <- tribble( ~term, ~OLS,  ~OLS, ~OLS, ~OLS,~OLS, ~OLS,
+                'Bandwidth Choice', 'Optimal','Wide','Narrow','Optimal','Wide','Narrow',    
+                'Std.Errors','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster',
+                'Fixed Effects', 'X', 'X', 'X', 'X','X', 'X',
+                'Total Number Clusters', '75', '69', '34', '85', '69','34',
+                'Clusters within Con. Area', '23', '23','10', '23', '23','10')
+attr(Add_info_RDD, 'position') <- c(5,7,8,9,10)
+
+
+
+
+
+Model_Summary_Rd_est_results <- list("RDD1" = Rd_est_Total_Years_Education_optimal, "RDD2" = Rd_est_Total_Years_Education_60km,"RDD3"= Rd_est_Total_Years_Education_30km, "RDD4" = Rd_est_Literacy_adjusted_optimal, "RDD5" = Rd_est_Literacy_adjusted_60km, "RDD6" =Rd_est_Literacy_adjusted_30km)
+
+modelsummary(Model_Summary_Rd_est_results, fmt = 4, title = "RDD Wealth", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "gt")
+
+
+RDD_Unco_final_table_Wealth <- modelsummary(Model_Summary_Rd_est_results, fmt = 4, title = "RDD Education (Quadratic RD Polynomial)", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "latex") %>%
+  add_header_above(c(" " = 1, "Years of Education " = 3, "Literacy" = 3))  %>% kable_styling(latex_options = c( "scale_down","hold_position"))
+
+kableExtra::save_kable(RDD_Unco_final_table_Wealth, file = "Unco_Education_final_quadratic_poly_table.tex")
+```
+
+
+```{r}
+#Checking the number of clusters inside the concessions when changing the bandwidth. 
+Unco_DS_final_optimal_1 <- Unco_DS_final %>% 
+  filter(dist_concess_bord_km < Rd_est_Total_Years_Education_optimal$bw[2])
+Unco_DS_final_optimal_1 %>%   group_by(within.con) %>%
+  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+Unco_DS_final_optimal_1 %>% 
+summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+
+Unco_DS_final_optimal_2 <- Unco_DS_final %>% 
+  filter(dist_concess_bord_km < Rd_est_Literacy_adjusted_optimal$bw[2])
+Unco_DS_final_optimal_2 %>%   group_by(within.con) %>%
+  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+Unco_DS_final_optimal_2 %>% 
+summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+
+
+```
+
+
+
+```{r}
+####################################################################################################################################
+#RD estimates for Height/Age Percentile (Women) and Height/Age Percentile (Children)  (optimal as well as fixed bandwidth of 60km and 30km)
+#Quadratic RD polynomial
+####################################################################################################################################
+
+
+attach(Unco_DS_final)
+Rd_est_Height_Age_Women_optimal <- rd_est(formula = Height.Age_Percentile_adj ~ dist_concess_bord_cen_km | quadratic_dist_concess_bord_cen_km + quadratic_dist_concess_bord_cen_km_Treat_Interact + age + age_square  + Dummy_Survey_Year + Brabanta +  Elisabetha + Flandria + Lusanga, data = Unco_DS_final, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l", verbose = FALSE)
+summary(Rd_est_Height_Age_Women_optimal)
+
+
+Rd_est_Height_Age_Women_60km <- rd_est(formula = Height.Age_Percentile_adj ~ dist_concess_bord_cen_km | quadratic_dist_concess_bord_cen_km + quadratic_dist_concess_bord_cen_km_Treat_Interact + age + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = 60, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l")
+summary(Rd_est_Height_Age_Women_60km)
+
+Rd_est_Height_Age_Women_30km <- rd_est(formula = Height.Age_Percentile_adj ~ dist_concess_bord_cen_km | quadratic_dist_concess_bord_cen_km + quadratic_dist_concess_bord_cen_km_Treat_Interact + age + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = 30, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l", kernel = "triangular")
+summary(Rd_est_Height_Age_Women_30km)
+detach(Unco_DS_final)
+
+attach (DHS_Children_final)
+Rd_est_Height_Age_Children_optimal <- rd_est(formula = Height.Age_Percentile_adj ~ dist_concess_bord_cen_km | quadratic_dist_concess_bord_cen_km + quadratic_dist_concess_bord_cen_km_Treat_Interact + Child_gender + Child_Age_months + age_square + Dummy_Survey_Year + Brabanta +  Elisabetha + Flandria + Lusanga, data = DHS_Children_final, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Height_Age_Children_optimal)
+
+Rd_est_Height_Age_Children_60km <- rd_est(formula = Height.Age_Percentile_adj ~ dist_concess_bord_cen_km | quadratic_dist_concess_bord_cen_km + quadratic_dist_concess_bord_cen_km_Treat_Interact + Child_gender + Child_Age_months + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = DHS_Children_final, bw = 60, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Height_Age_Children_60km)
+
+Rd_est_Height_Age_Children_30km <- rd_est(formula = Height.Age_Percentile_adj ~ dist_concess_bord_cen_km | quadratic_dist_concess_bord_cen_km + quadratic_dist_concess_bord_cen_km_Treat_Interact + Child_gender + Child_Age_months + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = DHS_Children_final, bw = 30, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l", kernel ="triangular")
+summary(Rd_est_Height_Age_Children_30km)
+detach(DHS_Children_final)
+
+
+
+
+
+#Adding further information to the table.
+Add_info_RDD <- tribble( ~term, ~OLS,  ~OLS, ~OLS, ~OLS, ~OLS, ~OLS,
+                'Bandwidth Choice', 'Optimal','Wide','Narrow','Optimal','Wide','Narrow',    
+                'Std.Errors','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster',
+                'Fixed Effects', 'X', 'X', 'X', 'X','X', 'X',
+                'Total Number Clusters', '49', '69','34','116', '69','34',
+                'Clusters within Con. Area', '16','23','10','23', '23','10')
+attr(Add_info_RDD, 'position') <- c(5,7,8,9,10)
+
+
+
+
+
+Model_Summary_Rd_est_results <- list("RDD1" = Rd_est_Height_Age_Women_optimal, "RDD2" = Rd_est_Height_Age_Women_60km, "RDD3" = Rd_est_Height_Age_Women_30km, "RDD4" = Rd_est_Height_Age_Children_optimal, "RDD5" = Rd_est_Height_Age_Children_60km, "RDD6"= Rd_est_Height_Age_Children_30km)
+
+modelsummary(Model_Summary_Rd_est_results, fmt = 4, title = "RDD Health", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "gt")
+
+
+RDD_Unco_final_table_Health <- modelsummary(Model_Summary_Rd_est_results, fmt = 4, title = "RDD Health (Quadratic RD Polynomial)", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "latex") %>%
+ add_header_above(c(" " = 1, "Height/ Age Percentile (Women)" = 3, "Height/ Age Percentile (Children)" = 3))  %>% kable_styling(latex_options = c( "scale_down","hold_position"))
+
+kableExtra::save_kable(RDD_Unco_final_table_Health, file = "Unco_Health_final_quadratic_poly_table.tex")
+```
+
+
+
+
+
+```{r}
+#Checking the number of clusters inside the concessions when changing the bandwidth. 
+
+
+Unco_DS_final_optimal_1 <- Unco_DS_final %>% 
+  filter(dist_concess_bord_km < Rd_est_Height_Age_Women_optimal$bw[2])
+Unco_DS_final_optimal_1 %>%   group_by(within.con) %>%
+  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+Unco_DS_final_optimal_1 %>% 
+summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+
+DHS_Children_final_2 <- DHS_Children_final %>% 
+  filter(dist_concess_bord_km < Rd_est_Height_Age_Children_optimal$bw[2])
+DHS_Children_final_2 %>%   group_by(within.con) %>%
+  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+DHS_Children_final_2 %>% 
+summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+```
+
+
+
+
+
+
+
+
+
+
