@@ -1,0 +1,253 @@
+---
+title: "Summary Statistics"
+author: "DB"
+date: "2023-12-10"
+output: pdf_document
+---
+
+
+
+```{r}
+library(modelsummary)
+library(kableExtra)
+library(gt)
+library(tidyverse)
+library(estimatr)
+library(rdrobust)
+library(rddtools)
+library(haven)
+library(Hmisc)
+library(xtable)
+library(rddapp)
+library(mosaic)
+
+```
+
+
+
+
+
+```{r}
+rm(list=ls()) 
+```
+
+```{r}
+
+
+Unco_DS_final<- read.csv(".../Replication Package Palm Oil Concessions Belgian Congo/Datasets/Unco_DS_final.csv", header=TRUE)
+
+#Creating the subsets.
+Unco_DS_final_60km <- Unco_DS_final %>% 
+  filter(dist_concess_bord < 60000)
+Unco_DS_final_30km <- Unco_DS_final %>% 
+  filter(dist_concess_bord < 30000)
+
+Unco_DS_final_60km_Inside <- subset(Unco_DS_final_60km, within.con == 1)
+Unco_DS_final_60km_Outside <- subset(Unco_DS_final_60km, within.con == 0)
+
+Unco_DS_final_30km_Inside <- subset(Unco_DS_final_30km, within.con == 1)
+Unco_DS_final_30km_Outside <- subset(Unco_DS_final_30km, within.con == 0)
+
+
+
+
+DHS_Children_final <- read.csv('.../Replication Package Palm Oil Concessions Belgian Congo/Datasets/DHS_Children_final.csv', header=TRUE)
+
+#Creating the subsets.
+DHS_Children_final_60km <- DHS_Children_final %>% 
+  filter(dist_concess_bord < 60000)
+DHS_Children_final_30km <- DHS_Children_final %>% 
+  filter(dist_concess_bord < 30000)
+
+
+DHS_Children_final_60km_Inside <- subset(DHS_Children_final_60km, within.con == 1)
+DHS_Children_final_60km_Outside <- subset(DHS_Children_final_60km, within.con == 0)
+
+DHS_Children_final_30km_Inside <- subset(DHS_Children_final_30km, within.con == 1)
+DHS_Children_final_30km_Outside <- subset(DHS_Children_final_30km, within.con == 0)
+
+
+```
+
+
+
+
+
+```{r}
+#########################################################################
+# Balance Check plot for 60 km with clustered errors and fixed effects. 
+#########################################################################
+
+
+
+# lm_robust loop for gender, age, age_square and Survey Year.
+dv_Unco <- c("Wealth_Index", "Log_Wealth_Index_Factor_Score", "Total_Years_Education", "Literacy_adjusted","Height.Age_Percentile_adj")
+for(i in 1:length(dv_Unco)){
+model <- paste("lm_rb_",dv_Unco[i], sep="")
+m <- lm_robust(as.formula(paste(dv_Unco[i],"~ within.con")),  data=Unco_DS_final_60km, clusters = DHS_Cluster_adj)
+assign(model,m)
+}
+
+lm_rb_Height_Age.Percentile_adj_Children <- lm_robust(Height.Age_Percentile_adj~ within.con,  data=DHS_Children_final_60km, clusters = DHS_Cluster_adj)
+
+
+
+
+# lm_robust loop for gender, age, age_square and Survey Year.
+dv_Unco <- c("Wealth_Index", "Log_Wealth_Index_Factor_Score", "Total_Years_Education", "Literacy_adjusted","Height.Age_Percentile_adj")
+for(i in 1:length(dv_Unco)){
+model <- paste("lm_rb_30km_",dv_Unco[i], sep="")
+m <- lm_robust(as.formula(paste(dv_Unco[i],"~ within.con")),  data=Unco_DS_final_30km, clusters = DHS_Cluster_adj)
+assign(model,m)
+}
+
+lm_rb_30km_Height_Age.Percentile_adj_Children <- lm_robust(Height.Age_Percentile_adj~ within.con,  data=DHS_Children_final_30km, clusters = DHS_Cluster_adj)
+
+
+
+
+Standard_Error_60km <-  c(
+  round(lm_rb_Wealth_Index$std.error[2],digit=3),
+  "-",
+  round(lm_rb_Log_Wealth_Index_Factor_Score$std.error[2],digit= 3),
+  "-",
+  round(lm_rb_Total_Years_Education$std.error[2],digit= 3), 
+  "-",
+  round(lm_rb_Literacy_adjusted$std.error[2],digit= 3),
+  "-",
+  round(lm_rb_Height.Age_Percentile_adj$std.error[2],digit= 3),
+  "-",
+  round(lm_rb_Height_Age.Percentile_adj_Children$std.error[2],digit= 3),
+  "-")
+
+
+
+P_Value_60km <- c(
+  round(lm_rb_Wealth_Index$p.value[2],digit=3),
+                  "-",
+  round(lm_rb_Log_Wealth_Index_Factor_Score$p.value[2],digit=3),
+  "-",
+  round(lm_rb_Total_Years_Education$p.value[2],digit=3),
+  "-",
+  round(lm_rb_Literacy_adjusted$p.value[2],digit=3),
+  "-",
+  round(lm_rb_Height.Age_Percentile_adj$p.value[2],digit=3),
+  "-",
+  round(lm_rb_Height_Age.Percentile_adj_Children$p.value[2],digit=3),
+  "-")
+
+                                                                                                                                          
+Mean_Inside_60km <- c(mean(Unco_DS_final_60km_Inside$Wealth_Index),
+                favstats(Unco_DS_final_60km_Inside$Wealth_Index)$n,
+                mean(Unco_DS_final_60km_Inside$Log_Wealth_Index_Factor_Score),
+                favstats(Unco_DS_final_60km_Inside$Log_Wealth_Index_Factor_Score)$n,
+                mean(Unco_DS_final_60km_Inside$Total_Years_Education),
+                favstats(Unco_DS_final_60km_Inside$Total_Years_Education)$n,
+                mean(Unco_DS_final_60km_Inside$Literacy_adjusted, na.rm = TRUE),
+                favstats(Unco_DS_final_60km_Inside$Literacy_adjusted)$n,
+                mean(Unco_DS_final_60km_Inside$Height.Age_Percentile_adj, na.rm = TRUE),
+                favstats(Unco_DS_final_60km_Inside$Height.Age_Percentile_adj)$n,
+                mean(DHS_Children_final_60km_Inside$Height.Age_Percentile_adj, na.rm = TRUE),
+                favstats(DHS_Children_final_60km_Inside$Height.Age_Percentile_adj)$n
+                )
+
+
+    
+Mean_Outside_60km <- c(mean(Unco_DS_final_60km_Outside$Wealth_Index),
+                       favstats(Unco_DS_final_60km_Outside$Wealth_Index)$n,
+                mean(Unco_DS_final_60km_Outside$Log_Wealth_Index_Factor_Score),
+                favstats(Unco_DS_final_60km_Outside$Log_Wealth_Index_Factor_Score)$n,
+                mean(Unco_DS_final_60km_Outside$Total_Years_Education, na.rm = TRUE),
+                favstats(Unco_DS_final_60km_Outside$Total_Years_Education, na.rm = TRUE)$n,
+                mean(Unco_DS_final_60km_Outside$Literacy_adjusted, na.rm = TRUE),
+                favstats(Unco_DS_final_60km_Outside$Literacy_adjusted)$n,
+                mean(Unco_DS_final_60km_Outside$Height.Age_Percentile_adj, na.rm = TRUE),
+                favstats(Unco_DS_final_60km_Outside$Height.Age_Percentile_adj)$n,
+                mean(DHS_Children_final_60km_Outside$Height.Age_Percentile_adj, na.rm = TRUE),
+                favstats(DHS_Children_final_60km_Outside$Height.Age_Percentile_adj)$n
+                )  
+
+
+
+
+Standard_Error_30km <-  c(
+  round(lm_rb_30km_Wealth_Index$std.error[2],digit= 3),
+  "-",
+  round(lm_rb_30km_Log_Wealth_Index_Factor_Score$std.error[2],digit= 3),
+  "-",
+  round(lm_rb_30km_Total_Years_Education$std.error[2],digit= 3),
+  "-",
+  round(lm_rb_30km_Literacy_adjusted$std.error[2],digit= 3),
+  "-",
+  round(lm_rb_30km_Height.Age_Percentile_adj$std.error[2],digit= 3),
+  "-",
+  round(lm_rb_30km_Height_Age.Percentile_adj_Children$std.error[2],digit=3),
+  "-")
+
+
+
+P_Value_30km <- c(round(lm_rb_30km_Wealth_Index$p.value[2],digit=3),
+                  "-",
+  round(lm_rb_30km_Log_Wealth_Index_Factor_Score$p.value[2],digit=3),
+  "-",
+  round(lm_rb_30km_Total_Years_Education$p.value[2],digit=3),
+  "-",
+  round(lm_rb_30km_Literacy_adjusted$p.value[2],digit=3),
+  "-",
+  round(lm_rb_30km_Height.Age_Percentile_adj$p.value[2],digit=3),
+  "-",
+  round(lm_rb_30km_Height_Age.Percentile_adj_Children$p.value[2],digit=3),
+  "-")
+
+                                                                                                                                          
+Mean_Inside_30km <- c(mean(Unco_DS_final_30km_Inside$Wealth_Index),
+                favstats(Unco_DS_final_30km_Inside$Wealth_Index)$n,
+                mean(Unco_DS_final_30km_Inside$Log_Wealth_Index_Factor_Score),
+                favstats(Unco_DS_final_30km_Inside$Log_Wealth_Index_Factor_Score)$n,
+                mean(Unco_DS_final_30km_Inside$Total_Years_Education, na.rm = TRUE),
+                favstats(Unco_DS_final_30km_Inside$Total_Years_Education)$n,
+                mean(Unco_DS_final_30km_Inside$Literacy_adjusted, na.rm = TRUE),
+                favstats(Unco_DS_final_30km_Inside$Literacy_adjusted)$n,
+                mean(Unco_DS_final_30km_Inside$Height.Age_Percentile_adj, na.rm = TRUE),
+                favstats(Unco_DS_final_30km_Inside$Height.Age_Percentile_adj)$n,
+                mean(DHS_Children_final_30km_Inside$Height.Age_Percentile_adj, na.rm = TRUE),
+                favstats(DHS_Children_final_30km_Inside$Height.Age_Percentile_adj)$n
+                )
+    
+Mean_Outside_30km <- c(mean(Unco_DS_final_30km_Outside$Wealth_Index),
+                       favstats(Unco_DS_final_30km_Outside$Wealth_Index)$n,
+                mean(Unco_DS_final_30km_Outside$Log_Wealth_Index_Factor_Score),
+                favstats(Unco_DS_final_30km_Outside$Log_Wealth_Index_Factor_Score)$n,
+                mean(Unco_DS_final_30km_Outside$Total_Years_Education, na.rm = TRUE),
+                favstats(Unco_DS_final_30km_Outside$Total_Years_Education)$n,
+                mean(Unco_DS_final_30km_Outside$Literacy_adjusted, na.rm = TRUE),
+                favstats(Unco_DS_final_30km_Outside$Literacy_adjusted)$n,
+                mean(Unco_DS_final_30km_Outside$Height.Age_Percentile_adj, na.rm = TRUE),
+                favstats(Unco_DS_final_30km_Outside$Height.Age_Percentile_adj)$n,
+                mean(DHS_Children_final_30km_Outside$Height.Age_Percentile_adj, na.rm = TRUE),
+                favstats(DHS_Children_final_30km_Outside$Height.Age_Percentile_adj)$n
+                ) 
+
+Rownames <- c("Wealth Index", "Observations", "Log(Weath Factor Score)", "Observations", "Years of Education", "Observations", "Literacy", "Observations", "Height/Age Percentile (Women)", "Observations", "Height/Age Percentile (Children)", "Observations")
+                                                                                                                                  
+Table_summary_statistics <- data.frame(Rownames, Mean_Inside_60km, Mean_Outside_60km, Standard_Error_60km,P_Value_60km,Mean_Inside_30km,Mean_Outside_30km,Standard_Error_30km,P_Value_30km)
+Table_summary_statistics <- Table_summary_statistics %>% mutate_if(is.numeric, round, digits=3)
+Table_summary_statistics
+                                                                                                                                        
+
+```
+
+
+```{r}
+#Creating the final table with all Mean Values for 60km and 30km
+Balance_Table_mean_final_kable <- kable(Table_summary_statistics, caption = "Summary Statistics for Dependent Variables", booktabs = T, digits=3, escape = F, col.names = linebreak(c("","Mean\n Inside","Mean\n Outside","Standard\n Error", "P-Value","Mean\nInside","Mean\n Outside","Standard\n Error", "P-Value"), align = "c"), "latex") %>% add_header_above(c(" "= 1, "Summary Statistics Mean Values 60km" = 4, "Summary Statistics Mean Values 30km" = 4))  %>% kable_styling(latex_options = c("hold_position","scale_down","repeat_header")) %>%
+footnote(general = " Columns 1 and 2 as well as 5 and 6 show the mean values of the corresponding dependent variable for inside and outside the concession areas within a bandwidth of 60 km and 30 km. The associated standard errors and p-values for the difference of those means are reported in columns 3 and 4 as well as in columns 7 and 8. Standard errors are clustered at the DHS cluster level. More information on the variable definitions and data sources can be found in Appendix.", threeparttable = T)
+              
+kableExtra::save_kable(Balance_Table_mean_final_kable, file = "Table_Summary_Statistics_final.tex")             
+```
+
+
+
+
+
+
