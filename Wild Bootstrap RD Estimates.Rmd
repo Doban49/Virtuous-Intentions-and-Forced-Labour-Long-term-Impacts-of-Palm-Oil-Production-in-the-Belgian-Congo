@@ -1,0 +1,963 @@
+---
+title: "Results of theWild Bootstrap method for RRD"
+author: "DB"
+date: "2024-01-01"
+output: pdf_document
+---
+
+
+```{r}
+library(modelsummary)
+library(kableExtra)
+library(gt)
+library(estimatr)
+library(rdrobust)
+library(rddtools)
+library(haven)
+library(Hmisc)
+library(tidyverse)
+library(rddapp)
+library(mosaic)
+library(gtools)
+library(xtable)
+library(data.table)
+``` 
+
+
+```{r}
+Unco_DS_final<- read.csv("C:/Users/Domi/Documents/Masterarbeit/R Stuff/Codes für die Master-Arbeit/Viewing and Merging datasets/Unco_DS_final.csv", header=TRUE)
+
+
+
+DHS_Children_final <- read.csv('C:/Users/Domi/Documents/Masterarbeit/R Stuff/Codes für die Master-Arbeit/Viewing and Merging datasets/DHS_Children_final.csv', header=TRUE)
+
+```
+
+
+
+
+
+```{r}
+###############################################################################
+#Adjusting treatment frdboot command so that the treatment is on the left side 
+###############################################################################
+# This code was taken over from He, Yang, and Otávio Bartalotti (2020).
+# All the components  that were important for the fuzzy RDD were removed. Additionaly, since the treatment is within the circles, the left and right side of the code needed to be swapped. The default option is that the estimate of the right side will be substracted from the left side since it is assumed that the treatment is on the right side. 
+# the concessions circles 
+kweight <- rdrobust:::rdrobust_kweight
+
+wild_values <- c(1 - sqrt(5), 1 + sqrt(5)) / 2
+wild_weights <- c(sqrt(5) + 1, sqrt(5) - 1) / (2 * sqrt(5))
+
+# this function applies to both outcome Y and treatment T.
+# it create a list of matrix, which will be repeatedly used.
+# notes on notation: L(left), R(right), i(0-1 indicator).
+inputlist <- function(y, x, h, b, p, q, kernel, residual) {
+  
+  # units within bandwidth max(h, b)
+  iL <- x < 0 & x > -max(h[1], b[1])
+  iR <- x >=0 & x <  max(h[2], b[2])
+  ihL <- x[iL] > - h[1]
+  ihR <- x[iR] < h[2]
+  
+  # if b < h, the following vectors will include units beyond b.
+  # it is necessary because we need fitted values and residuals beyond b but
+  # within h. It will not affect estimation because their weights are zero.
+  yL <- y[iL]
+  yR <- y[iR]
+  xL <- x[iL]
+  xR <- x[iR]
+  
+  # matrix for the outer bootstrap
+  # orthogonal polynomials
+  xL.poly <- poly(xL, q) 
+  xR.poly <- poly(xR, q)
+  # the design matrix
+  XL <- cbind(1, xL.poly) 
+  XR <- cbind(1, xR.poly)
+  KXL <- kweight(xL, 0, b[1], kernel) * XL
+  KXR <- kweight(xR, 0, b[2], kernel) * XR
+  # coefficient maker
+  coefL <- solve(crossprod(XL, KXL), t(KXL)) 
+  coefR <- solve(crossprod(XR, KXR), t(KXR))
+  # the original intercept maker
+  b0L <- c(1, predict(xL.poly, 0)) %*% coefL
+  b0R <- c(1, predict(xR.poly, 0)) %*% coefR
+  
+  # residual adjustment
+  KXL.sqrt <- sqrt(kweight(xL, 0, b[1], kernel)) * XL
+  KXR.sqrt <- sqrt(kweight(xR, 0, b[2], kernel)) * XR
+  hL <- diag(KXL.sqrt %*% solve(crossprod(XL, KXL), t(KXL.sqrt)))
+  hR <- diag(KXR.sqrt %*% solve(crossprod(XR, KXR), t(KXR.sqrt)))
+  
+  adjustL <- switch (residual,
+                      HC0 = 1,
+                      # HC1 = sqrt(length(yL)/(length(yL) - q - 1)), wrong
+                      HC2 = 1/sqrt(1 - hL),
+                      HC3 = 1/(1 - hL)
+  )
+  
+  adjustR <- switch (residual,
+                      HC0 = 1,
+                      # HC1 = sqrt(length(yR)/(length(yR) - q - 1)), wrong
+                      HC2 = 1/sqrt(1 - hR),
+                      HC3 = 1/(1 - hR)
+  )
+  
+  # matrix for the inner bootstrap (with "p" in notation)
+  # orthogonal polynomials
+  xpL.poly <- poly(xL[ihL], p) 
+  xpR.poly <- poly(xR[ihR], p)
+  # the design matrix
+  XpL <- cbind(1, xpL.poly) 
+  XpR <- cbind(1, xpR.poly)
+  KXpL <- kweight(xL[ihL], 0, h[1], kernel) * XpL
+  KXpR <- kweight(xR[ihR], 0, h[2], kernel) * XpR
+  # coefficient maker
+  coefpL <- solve(crossprod(XpL, KXpL), t(KXpL)) 
+  coefpR <- solve(crossprod(XpR, KXpR), t(KXpR))
+  # the original intercept maker
+  b0pL <- c(1, predict(xpL.poly, 0)) %*% coefpL
+  b0pR <- c(1, predict(xpR.poly, 0)) %*% coefpR
+  
+  return(list(L=yL, R=yR, ihL=ihL, ihR=ihR, XL=XL, XR=XR, 
+              coefL=coefL, coefR=coefR, b0L=b0L, b0R=b0R, 
+              b0pL=b0pL, b0pR=b0pR, adjL=adjustL, adjR=adjustR))
+}
+
+# Here the sides are swapped. 
+# this function finds the bootstrap parameter.
+# i.e., intercept from fitting a qth order polynomial.
+frd_parameter <- function(Yinput) {
+  (Yinput$b0L %*% Yinput$L - Yinput$b0R %*% Yinput$R)
+}
+
+# this function finds the FRD estimate.
+# i.e., intercept from fitting a pth order polynomial.
+frd_estimator <- function(Yinput) {
+  (Yinput$b0pL %*% Yinput$L[Yinput$ihL] - Yinput$b0pR %*% Yinput$R[Yinput$ihR])
+}
+
+# this function finds the bias-corrected estimate.
+frd_bc <- function(Yinput, gen.wild, Nbc) {
+  parameter <- frd_parameter(Yinput)
+  estimate <- frd_estimator(Yinput)
+  
+  yL.fit <- Yinput$XL %*% (Yinput$coefL %*% Yinput$L)
+  yR.fit <- Yinput$XR %*% (Yinput$coefR %*% Yinput$R)
+  
+  yL.res <- (Yinput$L - yL.fit) * Yinput$adjL
+  yR.res <- (Yinput$R - yR.fit) * Yinput$adjR
+  
+  boot <- replicate(Nbc, {
+    wild.e <- gen.wild()
+    Yinput$L <- yL.fit + yL.res * wild.e$wild.e.L
+    Yinput$R <- yR.fit + yR.res * wild.e$wild.e.R
+    frd_estimator(Yinput)
+  })
+  
+  return(estimate - mean(boot) + parameter) #In der Formel schätzen die aber parameter - mean(boot) und addieren das zum ursprünglichen estimate.
+}
+
+# this function finds the bootstrap distribution of bias-corrected estimate.
+frd_dist <- function(Yinput, gen.wild, Nbc, Nci) {
+  yL.fit <- Yinput$XL %*% (Yinput$coefL %*% Yinput$L)
+  yR.fit <- Yinput$XR %*% (Yinput$coefR %*% Yinput$R)
+  
+  yL.res <- (Yinput$L - yL.fit) * Yinput$adjL
+  yR.res <- (Yinput$R - yR.fit) * Yinput$adjR
+  
+  boot <- replicate(Nci, {
+    wild.e <- gen.wild()
+    Yinput$L <- yL.fit + yL.res * wild.e$wild.e.L
+    Yinput$R <- yR.fit + yR.res * wild.e$wild.e.R
+    frd_bc(Yinput, gen.wild, Nbc)
+  })
+  
+  return(boot)
+}
+
+# a wrapper for FRD bootstrap
+frdboot <- function(y, x, h, b, cluster = NULL, 
+                    a = 0.05, Nbc = 500, Nci = 999, p = 1, q = 2, 
+                    kernel = "tri", residual = "HC3"){
+  
+  # if the input bandwidth is a scalar, use it for both sides
+  if (length(h) == 1) h <- c(h, h)
+  if (length(b) == 1) b <- c(b, b)
+
+  # lists of input objects
+  Yinput <- inputlist(y, x, h, b, p, q, kernel, residual)
+
+  # a function generating wild bootstrap values
+  i.hb <- (x > -max(h[1], b[1]) & x < max(h[1], b[1]))
+  i.hb.L <- x[i.hb] < 0
+  i.hb.R <- !i.hb.L
+  
+  if (!is.null(cluster)) {
+    cluster <- cluster[i.hb]
+    
+    gen.wild <- function() {
+      e <- vector(length = length(cluster))
+      for (i in unique(cluster)) {
+        e[cluster == i] <- sample(wild_values, 1, prob = wild_weights)
+      }
+      return(list(wild.e.L = e[i.hb.L], wild.e.R = e[i.hb.R]))
+    }
+  } else {
+    n.L <- sum(i.hb.L)
+    n.R <- sum(i.hb.R)
+    
+    gen.wild <- function() {
+      return(list(wild.e.L = sample(wild_values, n.L, T, wild_weights),
+                  wild.e.R = sample(wild_values, n.R, T, wild_weights)))
+    }
+  }
+  
+  # estimation
+  parameter <- frd_parameter(Yinput)
+  tau <- frd_estimator(Yinput)
+  taubc <- frd_bc(Yinput, gen.wild, Nbc)
+  taubcboot <- frd_dist(Yinput, gen.wild, Nbc, Nci)
+  ci <- taubc - quantile(taubcboot, c(1 - a/2, a/2)) + parameter
+  
+  #return(c(tau, taubc, taubcboot, ci))
+  return(c(tau, taubc, parameter, ci, taubcboot))
+}
+
+
+
+```
+
+
+
+
+```{r}
+################################################################
+#Calculating the wild bootstrap estimates
+################################################################
+#Running the code in this chunk will take 4-5 hours!
+#For a faster access to the data load the code in the next chunk. 
+
+set.seed(16)
+
+attach(Unco_DS_final)
+srdboot_Wealth_Index_optimal <- frdboot(Unco_DS_final$Wealth_Index, Unco_DS_final$dist_concess_bord_cen_km, h =  c(39.54,39.54), b = c(39.54,39.54), cluster = Unco_DS_final$DHS_Cluster_adj,  a = 0.05, Nbc = 500, Nci =999 , p = 1, q = 2,  kernel = "tri", residual = "HC3" )
+srdboot_Wealth_Index_optimal
+
+srdboot_Wealth_Index_60km <- frdboot(Unco_DS_final$Wealth_Index, Unco_DS_final$dist_concess_bord_cen_km, h =  c(60,60), b = c(60,60), cluster = Unco_DS_final$DHS_Cluster_adj,  a = 0.05, Nbc = 500, Nci =999 , p = 1, q = 2,  kernel = "tri", residual = "HC3")
+srdboot_Wealth_Index_60km
+
+srdboot_Wealth_Index_30km <- frdboot(Unco_DS_final$Wealth_Index, Unco_DS_final$dist_concess_bord_cen_km, h =  c(30,30), b = c(30,30), cluster = Unco_DS_final$DHS_Cluster_adj,  a = 0.05, Nbc = 500, Nci =999 , p = 1, q = 2,  kernel = "tri", residual = "HC3")
+srdboot_Wealth_Index_30km
+
+
+
+srdboot_Wealth_Factor_Score_optimal <- frdboot(Unco_DS_final$Log_Wealth_Index_Factor_Score, Unco_DS_final$dist_concess_bord_cen_km, h =  c(26.85,26.85), b = c(26.85,26.85), cluster = Unco_DS_final$DHS_Cluster_adj,  a = 0.05, Nbc = 500, Nci =999, p = 1, q = 2,  kernel = "tri", residual = "HC3" )
+srdboot_Wealth_Factor_Score_optimal
+
+srdboot_Wealth_Factor_Score_60km <- frdboot(Unco_DS_final$Log_Wealth_Index_Factor_Score, Unco_DS_final$dist_concess_bord_cen_km, h =  c(60,60), b = c(60,60), cluster = Unco_DS_final$DHS_Cluster_adj,  a = 0.05, Nbc = 500, Nci =999, p = 1, q = 2,  kernel = "tri", residual = "HC3" )
+srdboot_Wealth_Factor_Score_60km
+
+srdboot_Wealth_Factor_Score_30km <- frdboot(Unco_DS_final$Log_Wealth_Index_Factor_Score, Unco_DS_final$dist_concess_bord_cen_km, h =  c(30,30), b = c(30,30), cluster = Unco_DS_final$DHS_Cluster_adj,  a = 0.05, Nbc = 500, Nci =999, p = 1, q = 2,  kernel = "tri", residual = "HC3")
+srdboot_Wealth_Factor_Score_30km
+
+
+
+#Removing NAs so that the frdboot command works.
+Unco_DS_final_NA_TYE <- Unco_DS_final %>% drop_na(Total_Years_Education)
+
+srdboot_Total_Years_Edu_optimal <- frdboot(Unco_DS_final_NA_TYE$Total_Years_Education, Unco_DS_final_NA_TYE$dist_concess_bord_cen_km, h =  c(70.97,70.97), b = c(70.97,70.97), cluster = Unco_DS_final$DHS_Cluster_adj,  a = 0.05, Nbc = 500, Nci =999, p = 1, q = 2,  kernel = "tri", residual = "HC3" )
+srdboot_Total_Years_Edu_optimal
+
+srdboot_Total_Years_Edu_60km <- frdboot(Unco_DS_final_NA_TYE$Total_Years_Education, Unco_DS_final_NA_TYE$dist_concess_bord_cen_km, h =  c(60,60), b = c(60,60), cluster = Unco_DS_final_NA_TYE$DHS_Cluster_adj,  a = 0.05, Nbc = 500, Nci =999, p = 1, q = 2,  kernel = "tri", residual = "HC3" )
+srdboot_Total_Years_Edu_60km
+
+srdboot_Total_Years_Edu_30km <- frdboot(Unco_DS_final_NA_TYE$Total_Years_Education, Unco_DS_final_NA_TYE$dist_concess_bord_cen_km, h =  c(30,30), b = c(30,30), cluster = Unco_DS_final_NA_TYE$DHS_Cluster_adj,  a = 0.05, Nbc = 500, Nci =999, p = 1, q = 2,  kernel = "tri", residual = "HC3")
+srdboot_Total_Years_Edu_30km
+
+
+
+Unco_DS_final_NA_Lit <- Unco_DS_final %>% drop_na(Literacy_adjusted)
+
+srdboot_Literacy_optimal <- frdboot(Unco_DS_final_NA_Lit$Literacy_adjusted, Unco_DS_final_NA_Lit$dist_concess_bord_cen_km, h =  c(85.88,85.88), b = c(85.88,85.88), cluster = Unco_DS_final_NA_Lit$DHS_Cluster_adj,  a = 0.05, Nbc = 500, Nci =999, p = 1, q = 2,  kernel = "tri", residual = "HC3" )
+srdboot_Literacy_optimal
+
+
+
+srdboot_Literacy_60km <- frdboot(Unco_DS_final_NA_Lit$Literacy_adjusted, Unco_DS_final_NA_Lit$dist_concess_bord_cen_km, h =  c(60,60), b = c(60,60), cluster = Unco_DS_final_NA_Lit$DHS_Cluster_adj,  a = 0.05, Nbc = 500, Nci =999, p = 1, q = 2,  kernel = "tri", residual = "HC3" )
+srdboot_Literacy_60km
+
+srdboot_Literacy_30km <- frdboot(Unco_DS_final_NA_Lit$Literacy_adjusted, Unco_DS_final_NA_Lit$dist_concess_bord_cen_km, h =  c(30,30), b = c(30,30), cluster = Unco_DS_final_NA_Lit$DHS_Cluster_adj,  a = 0.05, Nbc = 500, Nci =999, p = 1, q = 2,  kernel = "tri", residual = "HC3")
+srdboot_Literacy_30km
+
+
+
+Unco_DS_final_NA_HAP <- Unco_DS_final %>% drop_na(Height.Age_Percentile_adj)
+
+srdboot_Height_Age_Women_optimal <- frdboot(Unco_DS_final_NA_HAP$Height.Age_Percentile_adj, Unco_DS_final_NA_HAP$dist_concess_bord_cen_km, h =  c(39.41,39.41), b = c(39.41,39.41), cluster = Unco_DS_final_NA_HAP$DHS_Cluster_adj,  a = 0.05, Nbc = 500, Nci =999, p = 1, q = 2,  kernel = "tri", residual = "HC3" )
+srdboot_Height_Age_Women_optimal
+
+srdboot_Height_Age_Women_60km <- frdboot(Unco_DS_final_NA_HAP$Height.Age_Percentile_adj, Unco_DS_final_NA_HAP$dist_concess_bord_cen_km, h =  c(60,60), b = c(60,60), cluster = Unco_DS_final_NA_HAP$DHS_Cluster_adj,  a = 0.05, Nbc = 500, Nci =999, p = 1, q = 2,  kernel = "tri", residual = "HC3" )
+srdboot_Height_Age_Women_60km
+
+srdboot_Height_Age_Women_30km <- frdboot(Unco_DS_final_NA_HAP$Height.Age_Percentile_adj, Unco_DS_final_NA_HAP$dist_concess_bord_cen_km, h =  c(30,30), b = c(30,30), cluster = Unco_DS_final_NA_HAP$DHS_Cluster_adj,  a = 0.05, Nbc = 500, Nci =999, p = 1, q = 2,  kernel = "tri", residual = "HC3")
+srdboot_Height_Age_Women_30km
+
+
+detach(Unco_DS_final)
+
+
+
+attach(DHS_Children_final)
+
+DHS_Children_final_NA_HAP <- DHS_Children_final %>% drop_na(Height.Age_Percentile_adj)
+
+srdboot_Height_Age_Children_optimal <- frdboot(DHS_Children_final_NA_HAP$Height.Age_Percentile_adj, DHS_Children_final_NA_HAP$dist_concess_bord_cen_km, h =  c(128.40,128.40), b = c(128.40,128.40), cluster = DHS_Children_final_NA_HAP$DHS_Cluster_adj,  a = 0.05, Nbc = 500, Nci =999, p = 1, q = 2,  kernel = "tri", residual = "HC3" )
+srdboot_Height_Age_Children_optimal
+
+
+srdboot_Height_Age_Children_60km <- frdboot(DHS_Children_final_NA_HAP$Height.Age_Percentile_adj, DHS_Children_final_NA_HAP$dist_concess_bord_cen_km, h =  c(60,60), b = c(60,60), cluster = DHS_Children_final_NA_HAP$DHS_Cluster_adj,  a = 0.05, Nbc = 500, Nci =999, p = 1, q = 2,  kernel = "tri", residual = "HC3" )
+srdboot_Height_Age_Children_60km
+
+
+srdboot_Height_Age_Children_30km <- frdboot(DHS_Children_final_NA_HAP$Height.Age_Percentile_adj, DHS_Children_final_NA_HAP$dist_concess_bord_cen_km, h =  c(30,30), b = c(30,30), cluster = DHS_Children_final_NA_HAP$DHS_Cluster_adj,  a = 0.05, Nbc = 500, Nci =999, p = 1, q = 2,  kernel = "tri", residual = "HC3")
+srdboot_Height_Age_Children_30km
+
+
+detach(DHS_Children_final)
+```
+
+
+```{r}
+########################################################################################
+# Saving the bootstrap data as a dataframe
+########################################################################################
+
+Wealth_Index_optimal <- c(srdboot_Wealth_Index_optimal)
+Wealth_Index_60km <- c(srdboot_Wealth_Index_60km)
+Wealth_Index_30km <- c(srdboot_Wealth_Index_30km)
+Wealth_Factor_Score_optimal <- c(srdboot_Wealth_Factor_Score_optimal)
+Wealth_Factor_Score_60km <- c(srdboot_Wealth_Factor_Score_60km)
+Wealth_Factor_Score_30km <- c(srdboot_Wealth_Factor_Score_30km)
+Total_Years_Edu_optimal <- c(srdboot_Total_Years_Edu_optimal)
+Total_Years_Edu_60km <- c(srdboot_Total_Years_Edu_60km)
+Total_Years_Edu_30km <- c(srdboot_Total_Years_Edu_30km)
+Literacy_optimal <- c(srdboot_Literacy_optimal)
+Literacy_60km <- c(srdboot_Literacy_60km)
+Literacy_30km <- c(srdboot_Literacy_30km)
+Height_Age_Women_optimal <- c(srdboot_Height_Age_Women_optimal)
+Height_Age_Women_60km <- c(srdboot_Height_Age_Women_60km)
+Height_Age_Women_30km <- c(srdboot_Height_Age_Women_30km)
+Height_Age_Children_optimal <- c(srdboot_Height_Age_Children_optimal)
+Height_Age_Children_60km <- c(srdboot_Height_Age_Children_60km)
+Height_Age_Children_30km <- c(srdboot_Height_Age_Children_30km)
+
+
+SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov <- data.frame(Wealth_Index_optimal, Wealth_Index_60km, Wealth_Index_30km, Wealth_Factor_Score_optimal, Wealth_Factor_Score_60km, Wealth_Factor_Score_30km, Total_Years_Edu_optimal, Total_Years_Edu_60km, Total_Years_Edu_30km, Literacy_optimal, Literacy_60km, Literacy_30km, Height_Age_Women_optimal,Height_Age_Women_60km, Height_Age_Women_30km, Height_Age_Children_optimal, Height_Age_Children_60km,Height_Age_Children_30km)
+
+
+
+write.csv(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov, file ='.../SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov.csv')
+
+
+```
+
+
+```{r}
+# Loading the bootstrap data.
+SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov <- read.csv("//ug-uyst-ba-cifs.student.uni-goettingen.de/home/users/dominik.bantel/Eigene Dateien/Replication Package Palm Oil Concessions Belgian Congo/Wild Bootstrap Approach/SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov.csv", header=TRUE)
+
+```
+
+```{r}
+##############################################################
+#Calculating the right p-value
+##############################################################
+#Now Getting p-value for the big dataset. 
+2*(1-(ecdf(srdboot_Wealth_Index_60km[6:1004])(srdboot_Wealth_Index_60km[2]+srdboot_Wealth_Index_60km[3])))
+
+
+# The function right above is the reverse function of the following one. The command ecdf(x) function serves as the reverse function of quantile(x). The p-value is calculated in a way that the lower boundary of the confidence interval is just above zero. 
+
+# This an example.  
+#a <- 0.05
+
+a <- 0.22244 # This is the p-value for this example
+srdboot_Wealth_Index_60km[2] - quantile(srdboot_Wealth_Index_60km[6:1004], c(1 - a/2)) + srdboot_Wealth_Index_60km[3]
+
+# Furthermore, a differentiation b
+# If the Robust-estimate is above zero this formula is the right one. 
+2*(1-(ecdf(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_60km[6:1004])(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_60km[2]+SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_60km[3])))
+
+# If If the Robust-estimate is below zero this formula is the right one. 
+2*(ecdf(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_30km[6:1004])(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_30km[2]+SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_30km[3]))
+```
+
+
+
+```{r}
+############################################################
+#Calculating the p-value for every bootstrap estimate. 
+############################################################
+
+WBoot_Pvalue_Wealth_Index_optimal <- 2*(1-(ecdf(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_optimal[6:1004])(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_optimal[2]+SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_optimal[3])))
+WBoot_Pvalue_Wealth_Index_optimal
+
+WBoot_Pvalue_Wealth_Index_60km <- 2*(1-(ecdf(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_60km[6:1004])(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_60km[2]+SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_60km[3])))
+WBoot_Pvalue_Wealth_Index_60km
+
+#Negative robust Estimate 
+WBoot_Pvalue_Wealth_Index_30km <- 2*(ecdf(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_30km[6:1004])(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_30km[2]+SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_30km[3]))
+WBoot_Pvalue_Wealth_Index_30km
+
+
+
+#Negative robust Estimate 
+WBoot_Pvalue_Wealth_Factor_Score_optimal <- 2*(ecdf(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Factor_Score_optimal[6:1004])(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Factor_Score_optimal[2]+SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Factor_Score_optimal[3]))
+WBoot_Pvalue_Wealth_Factor_Score_optimal
+
+WBoot_Pvalue_Wealth_Factor_Score_60km <- 2*(1-(ecdf(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Factor_Score_60km[6:1004])(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Factor_Score_60km[2]+SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Factor_Score_60km[3])))
+WBoot_Pvalue_Wealth_Factor_Score_60km
+
+#Negative robust Estimate 
+WBoot_Pvalue_Wealth_Factor_Score_30km <- 2*(ecdf(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Factor_Score_30km[6:1004])(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Factor_Score_30km[2]+SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Factor_Score_30km[3]))
+WBoot_Pvalue_Wealth_Factor_Score_30km
+
+
+
+
+WBoot_Pvalue_Total_Years_Edu_optimal <- 2*(1-(ecdf(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Total_Years_Edu_optimal[6:1004])(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Total_Years_Edu_optimal[2]+SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Total_Years_Edu_optimal[3])))
+WBoot_Pvalue_Total_Years_Edu_optimal
+
+WBoot_Pvalue_Total_Years_Edu_60km <- 2*(1-(ecdf(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Total_Years_Edu_60km[6:1004])(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Total_Years_Edu_60km[2]+SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Total_Years_Edu_60km[3])))
+WBoot_Pvalue_Total_Years_Edu_60km
+
+WBoot_Pvalue_Total_Years_Edu_30km <- 2*(1-(ecdf(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Total_Years_Edu_30km[6:1004])(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Total_Years_Edu_30km[2]+SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Total_Years_Edu_30km[3])))
+WBoot_Pvalue_Total_Years_Edu_30km
+
+
+
+
+
+WBoot_Pvalue_Literacy_optimal <- 2*(1-(ecdf(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Literacy_optimal[6:1004])(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Literacy_optimal[2]+SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Literacy_optimal[3])))
+WBoot_Pvalue_Literacy_optimal
+
+WBoot_Pvalue_Literacy_60km <- 2*(1-(ecdf(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Literacy_60km[6:1004])(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Literacy_60km[2]+SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Literacy_60km[3])))
+WBoot_Pvalue_Literacy_60km
+
+#Negative robust Estimate 
+WBoot_Pvalue_Literacy_30km <- 2*(ecdf(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Literacy_30km[6:1004])(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Literacy_30km[2]+SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Literacy_30km[3]))
+WBoot_Pvalue_Literacy_30km
+
+
+
+
+WBoot_Pvalue_Height_Age_Women_optimal <- 2*(1-(ecdf(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Women_optimal[6:1004])(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Women_optimal[2]+SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Women_optimal[3])))
+WBoot_Pvalue_Height_Age_Women_optimal
+
+#Negative robust Estimate 
+WBoot_Pvalue_Height_Age_Women_60km <- 2*(ecdf(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Women_60km[6:1004])(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Women_60km[2]+SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Women_60km[3]))
+WBoot_Pvalue_Height_Age_Women_60km
+
+WBoot_Pvalue_Height_Age_Women_30km <- 2*(1-(ecdf(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Women_30km[6:1004])(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Women_30km[2]+SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Women_30km[3])))
+WBoot_Pvalue_Height_Age_Women_30km
+
+
+
+
+WBoot_Pvalue_Height_Age_Children_optimal <- 2*(1-(ecdf(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Children_optimal[6:1004])(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Children_optimal[2]+SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Children_optimal[3])))
+WBoot_Pvalue_Height_Age_Children_optimal
+
+WBoot_Pvalue_Height_Age_Children_60km <- 2*(1-(ecdf(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Children_60km[6:1004])(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Children_60km[2]+SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Children_60km[3])))
+WBoot_Pvalue_Height_Age_Children_60km
+
+#Negative robust Estimate 
+WBoot_Pvalue_Height_Age_Children_30km <- 2*(ecdf(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Children_30km[6:1004])(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Children_30km[2]+SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Children_30km[3]))
+WBoot_Pvalue_Height_Age_Children_30km
+
+
+
+```
+
+
+ 
+
+```{r}
+######################################################################################################################
+# RD estimates for Wealth Index and Log Wealth Index Factor Score (optimal aswell as fixed bandwidth of 60km and 30km)
+# Without covariates and fixed effects. 
+######################################################################################################################
+
+
+attach(Unco_DS_final)
+Rd_est_Wealth_index_optimal <- rd_est(formula = Wealth_Index ~ dist_concess_bord_cen_km, data = Unco_DS_final, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l", verbose = FALSE)
+summary(Rd_est_Wealth_index_optimal)
+
+
+Rd_est_Wealth_index_60km <- rd_est(formula = Wealth_Index ~ dist_concess_bord_cen_km, data = Unco_DS_final, bw = 60, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l")
+summary(Rd_est_Wealth_index_60km)
+
+Rd_est_Wealth_index_30km <- rd_est(formula = Wealth_Index ~ dist_concess_bord_cen_km, data = Unco_DS_final, bw = 30, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l")
+summary(Rd_est_Wealth_index_30km)
+
+
+Rd_est_Wealth_Factor_Score_optimal <- rd_est(formula = Log_Wealth_Index_Factor_Score ~ dist_concess_bord_cen_km, data = Unco_DS_final, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Wealth_Factor_Score_optimal)
+
+Rd_est_Wealth_Factor_Score_60km <- rd_est(formula = Log_Wealth_Index_Factor_Score ~ dist_concess_bord_cen_km, data = Unco_DS_final, bw = 60, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Wealth_Factor_Score_60km)
+
+Rd_est_Wealth_Factor_Score_30km <- rd_est(formula = Log_Wealth_Index_Factor_Score ~ dist_concess_bord_cen_km, data = Unco_DS_final, bw = 30, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Wealth_Factor_Score_30km)
+
+detach(Unco_DS_final)
+
+
+
+##############################################################################
+#Adjusting modelsummary_table for displaying regression table of rd_est model
+##############################################################################
+
+# Taking the less = TRUE option as default version. The following code is adapted to that! 
+
+tidy.rd <- function(x, ...) {
+    s <- summary(x, ...)
+    ret <- data.frame(
+      term      = row.names(s$coefficients),
+      estimate  = s$coefficients[, 3],
+      std.error = s$coefficients[, 4],
+      conf.low  = s$coefficients[, 5],
+      conf.high = s$coefficients[, 6])
+    ret
+}
+
+glance.rd <- function(x, ...) {
+    ret <- data.frame(
+      Bandwidth = x$bw[2],
+      nobs = x$obs[2])
+    ret
+}
+
+
+# Adjusting the robust standard errors since the default standard errors are different
+tidy_custom.rd <- function(x, ...) {
+    s <- summary(x)$coefficients
+    out <- data.frame(
+      term = row.names(s),
+      
+      estimate = s[,3],
+      std.error = s[,4],
+      p.value = s[,8])
+    return(out)
+}
+
+
+#Adding Mean Dep. Var.
+glance_custom.rd <- function(x, ...) {
+  dv <- x$model[[2]]$model$Y
+  dv_mean <- sprintf("%.3f", mean(dv, na.rm = TRUE))
+  dv_sd <- sprintf("%.3f", sd(dv, na.rm = TRUE))
+  data.table::data.table(`Mean Dep. Var.` = dv_mean, `SD Dep. Var.` = dv_sd)
+}
+
+
+# Main variable structure. 
+Var_Structure <- c("Opt" = "Inside Concession",
+                   "Usr" = "Inside Concession")
+
+#Adding further information to the table.
+Add_info_RDD <- tribble( ~term, ~OLS,  ~OLS, ~OLS, ~OLS, ~OLS, ~OLS,
+                'Bandwidth Choice', 'Optimal','Wide','Narrow','Optimal','Wide','Narrow',    
+                'Std.Errors','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster',
+                'Fixed Effects', '-', '-', '-', '-','-', '-',
+                'Total Number Clusters', '49', '69','34', '25', '69','34',
+                'Clusters within Con. Area', '16', '23','10', '8', '23','10')
+attr(Add_info_RDD, 'position') <- c(5,7,8,9,10)
+
+#Structuring model statistics.
+gm <- tibble::tribble(
+  ~raw,        ~clean,          ~fmt,
+  "nobs",      "Num.Obs.",             0,
+  "Bandwidth", "Bandwidth", 2,
+  "Mean Dep. Var.", "Mean Dep. Var.", 3,
+  "SD Dep. Var.", "SD Dep. Var.", 3)
+
+
+
+Model_Summary_Rd_est_results <- list("RDD1" = Rd_est_Wealth_index_optimal, "RDD2" = Rd_est_Wealth_index_60km, "RDD3"= Rd_est_Wealth_index_30km, "RDD4" = Rd_est_Wealth_Factor_Score_optimal, "RDD5" = Rd_est_Wealth_Factor_Score_60km, "RDD6" = Rd_est_Wealth_Factor_Score_30km)
+
+modelsummary(Model_Summary_Rd_est_results, fmt = 4, title = "RDD Wealth", estimate = "estimate", statistic = c("{std.error}","[{conf.low}, {conf.high}]","p.value"), stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "gt")
+
+
+RDD_Unco_final_table_Wealth <- modelsummary(Model_Summary_Rd_est_results, fmt = 4, title = "RDD Wealth based on Bootstrap Data without Covariats and Fixed Effects", estimate = "estimate", statistic = c("{std.error}","[{conf.low}, {conf.high}]","p.value"), stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "latex") %>%
+ add_header_above(c(" " = 1, "Wealth Index " = 4, "Log(Wealth Factor Score)" = 3))  %>% kable_styling(latex_options = c( "scale_down"))
+
+kableExtra::save_kable(RDD_Unco_final_table_Wealth, file = "Unco_Wealth_final_table_bootstrap_without_cov_fe.tex")
+
+```
+
+
+```{r}
+# Putting RD wild bootstrap values into a dataframe that fits to the latex code. 
+Rownames <- c("Robust Estimate","Robust CI","Robust P-Value")
+
+Wboot_Infer_Wealth_Index_optimal <- c(paste("& \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_optimal[2], digits = 4),"}", stars.pval(WBoot_Pvalue_Wealth_Index_optimal), sep=""),
+
+paste("& {} [\num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_optimal[4], digits = 3),"}, \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_optimal[5], digits = 3)
+,"}]", sep=""),
+
+paste("& \num{",round(WBoot_Pvalue_Wealth_Index_optimal, digits = 4)
+,"}", sep=""))
+
+
+
+Wboot_Infer_Wealth_Index_60km <- c(paste("& \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_60km[2], digits = 4),"}", stars.pval(WBoot_Pvalue_Wealth_Index_60km), sep=""),
+
+paste("& {} [\num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_60km[4], digits = 3),"}, \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_60km[5], digits = 3)
+,"}]", sep=""),
+
+paste("& \num{",round(WBoot_Pvalue_Wealth_Index_60km, digits = 4)
+,"}", sep=""))
+
+
+
+Wboot_Infer_Wealth_Index_30km <- c(paste("& \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_30km[2], digits = 4),"}", stars.pval(WBoot_Pvalue_Wealth_Index_30km), sep=""),
+
+paste("& {} [\num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_30km[4], digits = 3),"}, \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Index_30km[5], digits = 3)
+,"}]", sep=""),
+
+paste("& \num{",round(WBoot_Pvalue_Wealth_Index_30km, digits = 4)
+,"}", sep=""))
+
+
+
+Wboot_Infer_Wealth_Factor_Score_optimal <- c(paste("& \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Factor_Score_optimal[2], digits = 4),"}", stars.pval(WBoot_Pvalue_Wealth_Factor_Score_optimal), sep=""),
+
+paste("& {} [\num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Factor_Score_optimal[4], digits = 3),"}, \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Factor_Score_optimal[5], digits = 3)
+,"}]", sep=""),
+
+paste("& \num{",round(WBoot_Pvalue_Wealth_Factor_Score_optimal, digits = 4)
+,"}", sep=""))
+
+
+
+Wboot_Infer_Wealth_Factor_Score_60km <- c(paste("& \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Factor_Score_60km[2], digits = 4),"}", stars.pval(WBoot_Pvalue_Wealth_Factor_Score_60km), sep=""),
+
+paste("& {} [\num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Factor_Score_60km[4], digits = 3),"}, \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Factor_Score_60km[5], digits = 3)
+,"}]", sep=""),
+
+paste("& \num{",round(WBoot_Pvalue_Wealth_Factor_Score_60km, digits = 4)
+,"}", sep=""))
+
+
+
+Wboot_Infer_Wealth_Factor_Score_30km <- c(paste("& \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Factor_Score_30km[2], digits = 4),"}", stars.pval(WBoot_Pvalue_Wealth_Factor_Score_30km), "\\", sep=""),
+
+paste("& {} [\num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Factor_Score_30km[4], digits = 3),"}, \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Factor_Score_30km[5], digits = 3)
+,"}]  \\", sep=""),
+
+paste("& \num{",round(WBoot_Pvalue_Wealth_Factor_Score_30km, digits = 4)
+,"}  \\", sep=""))
+
+
+
+WBoot_RDD_Infer_Wealth <- data.frame(Rownames, Wboot_Infer_Wealth_Index_optimal, Wboot_Infer_Wealth_Index_60km, Wboot_Infer_Wealth_Index_30km, Wboot_Infer_Wealth_Factor_Score_optimal, Wboot_Infer_Wealth_Factor_Score_60km, Wboot_Infer_Wealth_Factor_Score_30km)
+
+Testdatatable <- as.data.table(WBoot_RDD_Infer_Wealth, TRUE) 
+Testdatatable
+print(Testdatatable)
+
+```
+
+```{r}
+##############################################################################################################
+# RD estimates for Total Years of Education and Literacy (optimal as well as fixed bandwidth of 60km  and 30km)
+# Without covariates and fixed effects.
+##############################################################################################################
+
+
+attach(Unco_DS_final)
+Rd_est_Total_Years_Education_optimal <- rd_est(formula = Total_Years_Education ~ dist_concess_bord_cen_km, data = Unco_DS_final, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l", verbose = FALSE)
+summary(Rd_est_Total_Years_Education_optimal)
+
+
+Rd_est_Total_Years_Education_60km <- rd_est(formula = Total_Years_Education ~ dist_concess_bord_cen_km, data = Unco_DS_final, bw = 60, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l")
+summary(Rd_est_Total_Years_Education_60km)
+
+Rd_est_Total_Years_Education_30km <- rd_est(formula = Total_Years_Education ~ dist_concess_bord_cen_km, data = Unco_DS_final, bw = 30, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l", kernel= "triangular")
+summary(Rd_est_Total_Years_Education_30km)
+
+
+Rd_est_Literacy_adjusted_optimal <- rd_est(formula = Literacy_adjusted ~ dist_concess_bord_cen_km, data = Unco_DS_final, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Literacy_adjusted_optimal)
+
+
+Rd_est_Literacy_adjusted_60km <- rd_est(formula = Literacy_adjusted ~ dist_concess_bord_cen_km, data = Unco_DS_final, bw = 60, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Literacy_adjusted_60km)
+
+Rd_est_Literacy_adjusted_30km <- rd_est(formula = Literacy_adjusted ~ dist_concess_bord_cen_km, data = Unco_DS_final, bw = 30, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Literacy_adjusted_30km)
+
+detach(Unco_DS_final)
+
+
+# Main variable structure. 
+Var_Structure <- c("Opt" = "Inside Concession",
+                   "Usr" = "Inside Concession")
+
+#Adding further information to the table.
+Add_info_RDD <- tribble( ~term, ~OLS,  ~OLS, ~OLS, ~OLS,~OLS, ~OLS,
+                'Bandwidth Choice', 'Optimal','Wide','Narrow','Optimal','Wide','Narrow',    
+                'Std.Errors','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster',
+                'Fixed Effects', '-', '-', '-', '-','-', '-',
+                'Total Number Clusters', '75', '69', '34', '85', '69','34',
+                'Clusters within Con. Area', '23', '23','10', '23', '23','10')
+attr(Add_info_RDD, 'position') <- c(5,7,8,9,10)
+
+
+
+
+
+#Structuring model statistics.
+gm <- tibble::tribble(
+  ~raw,        ~clean,          ~fmt,
+  "nobs",      "Num.Obs.",             0,
+  "Bandwidth", "Bandwidth", 2,
+  "Mean Dep. Var.", "Mean Dep. Var.", 3,
+  "SD Dep. Var.", "SD Dep. Var.", 3)
+
+
+
+Model_Summary_Rd_est_results <- list("RDD1" = Rd_est_Total_Years_Education_optimal, "RDD2" = Rd_est_Total_Years_Education_60km,"RDD3"= Rd_est_Total_Years_Education_30km, "RDD4" = Rd_est_Literacy_adjusted_optimal, "RDD5" = Rd_est_Literacy_adjusted_60km, "RDD6" =Rd_est_Literacy_adjusted_30km)
+
+modelsummary(Model_Summary_Rd_est_results, fmt = 4, title = "RDD Education", estimate = "estimate", statistic = c("{std.error}","[{conf.low}, {conf.high}]","p.value"), stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "gt")
+
+
+RDD_Unco_final_table_Education <- modelsummary(Model_Summary_Rd_est_results, fmt = 4, title = "RDD Education based on Bootstrap Data without Covariats and Fixed Effects", estimate = "estimate", statistic = c("{std.error}","[{conf.low}, {conf.high}]","p.value"), stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "latex") %>%
+ add_header_above(c(" " = 1, "Years of Education " = 3, "Literacy" = 3))  %>% kable_styling(latex_options = c( "scale_down"))
+
+kableExtra::save_kable(RDD_Unco_final_table_Education, file = "Unco_Education_final_table_bootstrap_without_cov_fe.tex")
+```
+
+
+
+```{r}
+# Putting RD wild bootstrap values into a dataframe that fits to the latex code.
+
+Rownames <- c("Robust Estimate","Robust CI","Robust P-Value")
+
+Wboot_Infer_Total_Years_Edu_optimal <- c(paste("& \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Total_Years_Edu_optimal [2], digits = 4),"}", stars.pval(WBoot_Pvalue_Total_Years_Edu_optimal), sep=""),
+
+paste("& {} [\num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Total_Years_Edu_optimal[4], digits = 3),"}, \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Total_Years_Edu_optimal[5], digits = 3)
+,"}]", sep=""),
+
+paste("& \num{",round(WBoot_Pvalue_Total_Years_Edu_optimal, digits = 4)
+,"}", sep=""))
+
+
+
+Wboot_Infer_Total_Years_Edu_60km <- c(paste("& \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Total_Years_Edu_60km[2], digits = 4),"}", stars.pval(WBoot_Pvalue_Total_Years_Edu_60km), sep=""),
+
+paste("& {} [\num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Total_Years_Edu_60km[4], digits = 3),"}, \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Total_Years_Edu_60km[5], digits = 3)
+,"}]", sep=""),
+
+paste("& \num{",round(WBoot_Pvalue_Total_Years_Edu_60km, digits = 4)
+,"}", sep=""))
+
+
+
+Wboot_Infer_Total_Years_Edu_30km <- c(paste("& \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Total_Years_Edu_30km[2], digits = 4),"}", stars.pval(WBoot_Pvalue_Total_Years_Edu_30km), sep=""),
+
+paste("& {} [\num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Total_Years_Edu_30km[4], digits = 3),"}, \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Total_Years_Edu_30km[5], digits = 3)
+,"}]", sep=""),
+
+paste("& \num{",round(WBoot_Pvalue_Total_Years_Edu_30km, digits = 4)
+,"}", sep=""))
+
+
+
+Wboot_Infer_Literacy_optimal <- c(paste("& \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Literacy_optimal[2], digits = 4),"}", stars.pval(WBoot_Pvalue_Literacy_optimal), sep=""),
+
+paste("& {} [\num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Literacy_optimal[4], digits = 3),"}, \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Literacy_optimal[5], digits = 3)
+,"}]", sep=""),
+
+paste("& \num{",round(WBoot_Pvalue_Literacy_optimal, digits = 4)
+,"}", sep=""))
+
+
+
+Wboot_Infer_Literacy_60km <- c(paste("& \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Literacy_60km[2], digits = 4),"}", stars.pval(WBoot_Pvalue_Literacy_60km), sep=""),
+
+paste("& {} [\num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Literacy_60km[4], digits = 3),"}, \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Literacy_60km[5], digits = 3)
+,"}]", sep=""),
+
+paste("& \num{",round(WBoot_Pvalue_Literacy_60km, digits = 4)
+,"}", sep=""))
+
+
+
+Wboot_Infer_Literacy_30km <- c(paste("& \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Factor_Score_30km[2], digits = 4),"}", stars.pval(WBoot_Pvalue_Literacy_30km), "\\", sep=""),
+
+paste("& {} [\num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Factor_Score_30km[4], digits = 3),"}, \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Wealth_Factor_Score_30km[5], digits = 3)
+,"}]  \\", sep=""),
+
+paste("& \num{",round(WBoot_Pvalue_Literacy_30km, digits = 4)
+,"}  \\", sep=""))
+
+
+WBoot_RDD_Infer_Education <- data.frame(Rownames, Wboot_Infer_Total_Years_Edu_optimal, Wboot_Infer_Total_Years_Edu_60km, Wboot_Infer_Total_Years_Edu_30km, Wboot_Infer_Literacy_optimal, Wboot_Infer_Literacy_60km, Wboot_Infer_Literacy_30km)
+
+Testdatatable <- as.data.table(WBoot_RDD_Infer_Education, TRUE) 
+Testdatatable
+print(Testdatatable)
+
+```
+
+
+
+```{r}
+###########################################################################################################################################
+# RD estimates for Height/Age Percentile (Women) and Height/Age Percentile (Children)  (optimal as well as fixed bandwidth of 60km and 30km)
+# Without covariates and fixed effects.
+###########################################################################################################################################
+
+
+attach(Unco_DS_final)
+Rd_est_Height_Age_Women_optimal <- rd_est(formula = Height.Age_Percentile_adj ~ dist_concess_bord_cen_km, data = Unco_DS_final, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l", verbose = FALSE)
+summary(Rd_est_Height_Age_Women_optimal)
+
+
+Rd_est_Height_Age_Women_60km <- rd_est(formula = Height.Age_Percentile_adj ~ dist_concess_bord_cen_km, data = Unco_DS_final, bw = 60, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l")
+summary(Rd_est_Height_Age_Women_60km)
+
+Rd_est_Height_Age_Women_30km <- rd_est(formula = Height.Age_Percentile_adj ~ dist_concess_bord_cen_km, data = Unco_DS_final, bw = 30, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l", kernel = "triangular")
+summary(Rd_est_Height_Age_Women_30km)
+detach(Unco_DS_final)
+
+attach (DHS_Children_final)
+Rd_est_Height_Age_Children_optimal <- rd_est(formula = Height.Age_Percentile_adj ~ dist_concess_bord_cen_km, data = DHS_Children_final, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Height_Age_Children_optimal)
+
+Rd_est_Height_Age_Children_60km <- rd_est(formula = Height.Age_Percentile_adj ~ dist_concess_bord_cen_km, data = DHS_Children_final, bw = 60, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Height_Age_Children_60km)
+
+Rd_est_Height_Age_Children_30km <- rd_est(formula = Height.Age_Percentile_adj ~ dist_concess_bord_cen_km, data = DHS_Children_final, bw = 30, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l", kernel ="triangular")
+summary(Rd_est_Height_Age_Children_30km)
+detach(DHS_Children_final)
+
+
+
+# Main variable structure. 
+Var_Structure <- c("Opt" = "Inside Concession",
+                   "Usr" = "Inside Concession")
+
+#Adding further information to the table.
+Add_info_RDD <- tribble( ~term, ~OLS,  ~OLS, ~OLS, ~OLS, ~OLS, ~OLS,
+                'Bandwidth Choice', 'Optimal','Wide','Narrow','Optimal','Wide','Narrow',    
+                'Std.Errors','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster',
+                'Fixed Effects', '-', '-', '-', '-','-', '-',
+                'Total Number Clusters', '49', '69','34','116', '69','34',
+                'Clusters within Con. Area', '16','23','10','23', '23','10')
+attr(Add_info_RDD, 'position') <- c(5,7,8,9,10)
+
+
+
+#Structuring model statistics.
+gm <- tibble::tribble(
+  ~raw,        ~clean,          ~fmt,
+  "nobs",      "Num.Obs.",             0,
+  "Bandwidth", "Bandwidth", 2,
+  "Mean Dep. Var.", "Mean Dep. Var.", 3,
+  "SD Dep. Var.", "SD Dep. Var.", 3)
+
+
+
+Model_Summary_Rd_est_results <- list("RDD1" = Rd_est_Height_Age_Women_optimal, "RDD2" = Rd_est_Height_Age_Women_60km, "RDD3" = Rd_est_Height_Age_Women_30km, "RDD4" = Rd_est_Height_Age_Children_optimal, "RDD5" = Rd_est_Height_Age_Children_60km, "RDD6"= Rd_est_Height_Age_Children_30km)
+
+modelsummary(Model_Summary_Rd_est_results, fmt = 4, title = "RDD Education", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "gt")
+
+
+RDD_Unco_final_table_Health <- modelsummary(Model_Summary_Rd_est_results, fmt = 4, title = "RDD Health based on Bootstrap Data without Covariats and Fixed Effects", estimate = "estimate", statistic = c("{std.error}","[{conf.low}, {conf.high}]","p.value"), stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "latex") %>%
+ add_header_above(c(" " = 1, "Height/ Age Percentile (Women)" = 3, "Height/ Age Percentile (Children)" = 3))  %>% kable_styling(latex_options = c( "scale_down"))
+
+kableExtra::save_kable(RDD_Unco_final_table_Health, file = "Unco_Health_final_table_bootstrap_without_cov_fes.tex")
+```
+
+
+
+```{r}
+# Putting RD wild bootstrap values into a dataframe that fits to the latex code.
+
+Rownames <- c("Robust Estimate","Robust CI","Robust P-Value")
+
+Wboot_Infer_Height_Age_Women_optimal <- c(paste("& \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Women_optimal[2], digits = 4),"}", stars.pval(WBoot_Pvalue_Height_Age_Women_optimal), sep=""),
+
+paste("& {} [\num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Women_optimal[4], digits = 3),"}, \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Women_optimal[5], digits = 3)
+,"}]", sep=""),
+
+paste("& \num{",round(WBoot_Pvalue_Height_Age_Women_optimal, digits = 4)
+,"}", sep=""))
+
+
+
+Wboot_Infer_Height_Age_Women_60km <- c(paste("& \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Women_60km[2], digits = 4),"}", stars.pval(WBoot_Pvalue_Height_Age_Women_60km), sep=""),
+
+paste("& {} [\num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Women_60km[4], digits = 3),"}, \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Women_60km[5], digits = 3)
+,"}]", sep=""),
+
+paste("& \num{",round(WBoot_Pvalue_Height_Age_Women_60km, digits = 4)
+,"}", sep=""))
+
+
+
+Wboot_Infer_Height_Age_Women_30km <- c(paste("& \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Women_30km[2], digits = 4),"}", stars.pval(WBoot_Pvalue_Height_Age_Women_30km), sep=""),
+
+paste("& {} [\num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Women_30km[4], digits = 3),"}, \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Women_30km[5], digits = 3)
+,"}]", sep=""),
+
+paste("& \num{",round(WBoot_Pvalue_Height_Age_Women_30km, digits = 4)
+,"}", sep=""))
+
+
+
+Wboot_Infer_Height_Age_Children_optimal <- c(paste("& \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Children_optimal[2], digits = 4),"}", stars.pval(WBoot_Pvalue_Height_Age_Children_optimal), sep=""),
+
+paste("& {} [\num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Children_optimal[4], digits = 3),"}, \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Children_optimal[5], digits = 3)
+,"}]", sep=""),
+
+paste("& \num{",round(WBoot_Pvalue_Height_Age_Children_optimal, digits = 4)
+,"}", sep=""))
+
+
+
+Wboot_Infer_Height_Age_Children_60km <- c(paste("& \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Children_60km[2], digits = 4),"}", stars.pval(WBoot_Pvalue_Height_Age_Children_60km), sep=""),
+
+paste("& {} [\num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Children_60km[4], digits = 3),"}, \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Children_60km[5], digits = 3)
+,"}]", sep=""),
+
+paste("& \num{",round(WBoot_Pvalue_Height_Age_Children_60km, digits = 4)
+,"}", sep=""))
+
+
+
+Wboot_Infer_Height_Age_Children_30km <- c(paste("& \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Children_30km[2], digits = 4),"}", stars.pval(WBoot_Pvalue_Height_Age_Children_30km), "\\", sep=""),
+
+paste("& {} [\num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Children_30km[4], digits = 3),"}, \num{",round(SharpRDD_WBootstrap_Data_Main_Results_without_Fe_Cov$Height_Age_Children_30km[5], digits = 3)
+,"}]  \\", sep=""),
+
+paste("& \num{",round(WBoot_Pvalue_Height_Age_Children_30km, digits = 4)
+,"}  \\", sep=""))
+
+
+WBoot_RDD_Infer_Health <- data.frame(Rownames, Wboot_Infer_Height_Age_Women_optimal, Wboot_Infer_Height_Age_Women_60km, Wboot_Infer_Height_Age_Women_30km, Wboot_Infer_Height_Age_Children_optimal, Wboot_Infer_Height_Age_Children_60km, Wboot_Infer_Height_Age_Children_30km)
+
+Testdatatable <- as.data.table(WBoot_RDD_Infer_Health, TRUE) 
+Testdatatable
+print(Testdatatable)
+
+```
+
+
+
+
