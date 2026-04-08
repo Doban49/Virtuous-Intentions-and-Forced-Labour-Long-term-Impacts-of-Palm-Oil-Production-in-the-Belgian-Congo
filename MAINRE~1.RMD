@@ -1,5 +1,5 @@
 ---
-title: "RDD Main Results with Additional Bandwidths and a Rectangular Kernel"
+title: "RDD Main Results with Alternative Circle Centers"
 author: "DB"
 date: "2023-12-08"
 output: pdf_document
@@ -20,129 +20,67 @@ library(mosaic)
 
 ``` 
 
-
 ```{r}
 rm(list = ls())
 ```
 
 
 
+
+
 ```{r}
-#Loading the the main datasets for adults and children 
+#Loading and Datasets and creating subsets
 Unco_DS_final<- read.csv(".../Replication Package Palm Oil Concessions Belgian Congo/Datasets/Unco_DS_final.csv", header=TRUE)
 
 
-#creating the subsets
-Unco_DS_final_60km <- Unco_DS_final %>% 
-  filter(dist_concess_bord < 60000)
-Unco_DS_final_30km <- Unco_DS_final %>% 
-  filter(dist_concess_bord < 30000)
+DHS_Children_final <- read.csv('...n/Replication Package Palm Oil Concessions Belgian Congo/Datasets/DHS_Children_final.csv', header=TRUE)
 
 
+Unco_DS_final_60km_alternative <- Unco_DS_final %>% 
+  filter(dist_concess_bord_km_alternative < 60)
+Unco_DS_final_30km_alternative <- Unco_DS_final %>% 
+  filter(dist_concess_bord_km_alternative < 30)
 
-DHS_Children_final <- read.csv('.../Replication Package Palm Oil Concessions Belgian Congo/Datasets/DHS_Children_final.csv', header=TRUE)
-
-ß
-```
-
-
-
-```{r}
-# Finding out the number of the respective clusters inside and outside the clusters. 
-Unco_DS_final_20km <- Unco_DS_final %>% 
-  filter(dist_concess_bord_km < 20)
-Unco_DS_final_25km <- Unco_DS_final %>% 
-  filter(dist_concess_bord_km < 25)
-Unco_DS_final_35km <- Unco_DS_final %>% 
-  filter(dist_concess_bord_km < 35)
-Unco_DS_final_40km <- Unco_DS_final %>% 
-  filter(dist_concess_bord_km < 40)
-Unco_DS_final_45km <- Unco_DS_final %>% 
-  filter(dist_concess_bord_km < 45)
-Unco_DS_final_50km <- Unco_DS_final %>% 
-  filter(dist_concess_bord_km < 50)
-Unco_DS_final_55km <- Unco_DS_final %>% 
-  filter(dist_concess_bord_km < 55)
-
-
-DHS_Children_final_20km <- DHS_Children_final %>% 
-  filter(dist_concess_bord_km < 20)
-DHS_Children_final_25km <- DHS_Children_final %>% 
-  filter(dist_concess_bord_km < 25)
-DHS_Children_final_35km <- DHS_Children_final %>% 
-  filter(dist_concess_bord_km < 35)
-DHS_Children_final_40km <- DHS_Children_final %>% 
-  filter(dist_concess_bord_km < 40)
-DHS_Children_final_45km <- DHS_Children_final %>% 
-  filter(dist_concess_bord_km < 45)
-DHS_Children_final_50km <- DHS_Children_final %>% 
-  filter(dist_concess_bord_km < 50)
-DHS_Children_final_55km <- DHS_Children_final %>% 
-  filter(dist_concess_bord_km < 55)
-```
-
-
-```{r}
-Unco_DS_final_55km %>%
-  group_by(within.con) %>%
-  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
-Unco_DS_final_55km %>%  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
-
-Unco_DS_final_50km %>%
-  group_by(within.con) %>%
-  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
-Unco_DS_final_50km %>%  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
-
-Unco_DS_final_45km %>%
-  group_by(within.con) %>%
-  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
-Unco_DS_final_45km %>%  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
-
-Unco_DS_final_40km %>%
-  group_by(within.con) %>%
-  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
-Unco_DS_final_40km %>%  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
-
-Unco_DS_final_35km %>%
-  group_by(within.con) %>%
-  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
-Unco_DS_final_35km %>%  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
-
-Unco_DS_final_25km %>%
-  group_by(within.con) %>%
-  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
-Unco_DS_final_25km %>%  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
-
-Unco_DS_final_20km %>%
-  group_by(within.con) %>%
-  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
-Unco_DS_final_20km %>%  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
-
-
-#               'Total Number Clusters',      '10', '22','45', '49', '53','61','63',
-#               'Clusters within Con. Area',   '2', '7', '14', '16', '17','21','21')
 
 ```
 
 
 
 ```{r}
-
 ######################################################################################################################
-#RD estimates for Wealth Index (additional Bandwiths) with a rectangular kernel.
+#RD estimates for Wealth Index and Log Wealth Index Factor Score (optimal as well as fixed bandwidth of 60km and 30km)
+#Now for alternative circle centers
 ######################################################################################################################
 
-#Running a loop with the following bandwiths 
+
 attach(Unco_DS_final)
+Rd_est_Wealth_index_optimal <- rd_est(formula = Wealth_Index ~ dist_concess_bord_cen_km_alternative | gender + age + age_square + Dummy_Survey_Year + Brabanta +  Elisabetha + Flandria + Lusanga, data = Unco_DS_final, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l", verbose = FALSE)
+summary(Rd_est_Wealth_index_optimal)
 
-bw <- c(20,25,35,40,45,50,55)
-for(i in 1:length(bw)){
-model <- paste("Rd_est_add_bandwidth_",bw[i],"km", sep="")
-m<- rd_est(formula = Wealth_Index ~ dist_concess_bord_cen_km | gender + age + age_square + Dummy_Survey_Year + Brabanta +  Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = bw[i], cluster = DHS_Cluster_adj, less= TRUE, t.design = "l", verbose = FALSE, kernel= "rectangular")
-assign(model,m)
-}
+
+Rd_est_Wealth_index_60km <- rd_est(formula = Wealth_Index ~ dist_concess_bord_cen_km_alternative | gender + age + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = 60, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l")
+summary(Rd_est_Wealth_index_60km)
+
+Rd_est_Wealth_index_30km <- rd_est(formula = Wealth_Index ~ dist_concess_bord_cen_km_alternative | gender + age + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = 30, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l")
+summary(Rd_est_Wealth_index_30km)
+
+
+Rd_est_Wealth_Factor_Score_optimal <- rd_est(formula = Log_Wealth_Index_Factor_Score ~ dist_concess_bord_cen_km_alternative |  gender + age + age_square + Dummy_Survey_Year + Brabanta +  Elisabetha + Flandria + Lusanga, data = Unco_DS_final, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Wealth_Factor_Score_optimal)
+
+Rd_est_Wealth_Factor_Score_60km <- rd_est(formula = Log_Wealth_Index_Factor_Score ~ dist_concess_bord_cen_km_alternative |  gender + age + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = 60, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Wealth_Factor_Score_60km)
+
+Rd_est_Wealth_Factor_Score_30km <- rd_est(formula = Log_Wealth_Index_Factor_Score ~ dist_concess_bord_cen_km_alternative |  gender + age + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = 30, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Wealth_Factor_Score_30km)
+
 detach(Unco_DS_final)
 
+
+
+#############################################################################
+#Adjusting modelsummary_table for displaying regression table of rd_est model
+#############################################################################
 
 # Taking the less = TRUE option as default version. The following code is adapted to that! 
 
@@ -191,13 +129,19 @@ glance_custom.rd <- function(x, ...) {
 Var_Structure <- c("Opt" = "Inside Concession",
                    "Usr" = "Inside Concession")
 
+
+
 #Adding further information to the table.
-Add_info_RDD <- tribble( ~term, ~OLS,  ~OLS, ~OLS, ~OLS, ~OLS, ~OLS,~OLS,
-                'Std.Errors','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster',
-                'Fixed Effects', 'X', 'X', 'X', 'X','X', 'X','X',
-                'Total Number Clusters',      '10', '22','45', '49', '53','61','63',
-                'Clusters within Con. Area',   '2', '7', '14', '16', '17','21','21')
-attr(Add_info_RDD, 'position') <- c(5,7,8,9)
+Add_info_RDD <- tribble( ~term, ~OLS,  ~OLS, ~OLS, ~OLS, ~OLS, ~OLS,
+                'Bandwidth Choice', 'Optimal','Wide','Narrow','Optimal','Wide','Narrow',    
+                'Std.Errors','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster',
+                'Fixed Effects', 'X', 'X', 'X', 'X','X', 'X',
+                'Total Number Clusters', '25', '72','27', '15', '72','27',
+                'Clusters within Con. Area', '9', '23','9', '5', '23','9')
+attr(Add_info_RDD, 'position') <- c(5,7,8,9,10)
+
+
+
 
 #Structuring model statistics.
 gm <- tibble::tribble(
@@ -208,203 +152,208 @@ gm <- tibble::tribble(
   "SD Dep. Var.", "SD Dep. Var.", 3)
 
 
+Model_Summary_Rd_est_results <- list("RDD1" = Rd_est_Wealth_index_optimal, "RDD2" = Rd_est_Wealth_index_60km, "RDD3"= Rd_est_Wealth_index_30km, "RDD4" = Rd_est_Wealth_Factor_Score_optimal, "RDD5" = Rd_est_Wealth_Factor_Score_60km, "RDD6" = Rd_est_Wealth_Factor_Score_30km)
 
-Model_Summary_Rd_est_results <- list("RDD1" = Rd_est_add_bandwidth_20km, "RDD2" = Rd_est_add_bandwidth_25km, "RDD3"= Rd_est_add_bandwidth_35km, "RDD4" = Rd_est_add_bandwidth_40km, "RDD5" = Rd_est_add_bandwidth_45km, "RDD6" = Rd_est_add_bandwidth_50km, "RDD7" =Rd_est_add_bandwidth_55km)
-
-modelsummary(Model_Summary_Rd_est_results, fmt = 3, title = "RDD Wealth Aditional Bandwidths", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "gt")
+modelsummary(Model_Summary_Rd_est_results, fmt = 4, title = "RDD Wealth (Alternative Concession Centers)", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "gt")
 
 
-RDD_Unco_final_table_Wealth <- modelsummary(Model_Summary_Rd_est_results, fmt = 3, title = "RDD Wealth Index Estimates for Additional Bandwidths using a Rectangular Kernel", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "latex") %>%
- add_header_above(c(" " = 1, "Wealth Index " = 7))  %>% kable_styling(latex_options = c( "scale_down","hold_position"))
+RDD_Unco_final_table_Wealth <- modelsummary(Model_Summary_Rd_est_results, fmt = 4, title = "RDD Wealth (Alternative Concession Centers)", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "latex") %>%
+ add_header_above(c(" " = 1, "Wealth Index " = 3, "Log(Wealth Factor Score)" = 3))  %>% kable_styling(latex_options = c( "scale_down","hold_position"))
 
-kableExtra::save_kable(RDD_Unco_final_table_Wealth, file = "Unco_Wealth_Index_additional_bandwidths_rectangular_table.tex")
+kableExtra::save_kable(RDD_Unco_final_table_Wealth, file = "Unco_Wealth_final_table_alternative_centers.tex")
 
+```
+
+
+```{r}
+#Checking the number of clusters inside the concessions when changing the bandwidth. 
+Unco_DS_final_optimal_1 <- Unco_DS_final %>% 
+  filter(dist_concess_bord_km_alternative < Rd_est_Wealth_index_optimal$bw[2])
+Unco_DS_final_optimal_1 %>%   group_by(within.con) %>%
+  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+Unco_DS_final_optimal_1 %>% 
+summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+
+Unco_DS_final_optimal_2 <- Unco_DS_final %>% 
+  filter(dist_concess_bord_km_alternative < Rd_est_Wealth_Factor_Score_optimal$bw[2])
+Unco_DS_final_optimal_2 %>%   group_by(within.con) %>%
+  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+Unco_DS_final_optimal_2 %>% 
+summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+
+
+Unco_DS_final_60km_alternative %>%
+  group_by(within.con) %>%
+  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+Unco_DS_final_60km_alternative %>%  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+
+
+Unco_DS_final_30km_alternative %>%
+  group_by(within.con) %>%
+  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+Unco_DS_final_30km_alternative %>%  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
 
 ```
 
 
 
+
 ```{r}
+##############################################################################################################
+#RD estimates for Total Years of Education and Literacy (optimal as well as fixed bandwidth of 60km  and 30km)
+#Now for alternative circle centers
+##############################################################################################################
 
-######################################################################################################################
-#RD estimates for Wealth Factor Score (Additional Bandwiths) with a rectangular kernel.
-######################################################################################################################
+
 attach(Unco_DS_final)
+Rd_est_Total_Years_Education_optimal <- rd_est(formula = Total_Years_Education ~ dist_concess_bord_cen_km_alternative |  gender + age + age_square + Dummy_Survey_Year + Brabanta +  Elisabetha + Flandria + Lusanga, data = Unco_DS_final, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l", verbose = FALSE)
+summary(Rd_est_Total_Years_Education_optimal)
 
 
-#Running a loop with the following bandwiths 
-bw <- c(20,25,35,40,45,50,55)
-for(i in 1:length(bw)){
-model <- paste("Rd_est_add_bandwidth_",bw[i],"km", sep="")
-m<- rd_est(formula = Log_Wealth_Index_Factor_Score ~ dist_concess_bord_cen_km | gender + age + age_square + Dummy_Survey_Year + Brabanta +  Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = bw[i], cluster = DHS_Cluster_adj, less= TRUE, t.design = "l", verbose = FALSE, kernel = "rectangular")
-assign(model,m)
-}
+Rd_est_Total_Years_Education_60km <- rd_est(formula = Total_Years_Education ~ dist_concess_bord_cen_km_alternative | gender + age + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = 60, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l")
+summary(Rd_est_Total_Years_Education_60km)
+
+Rd_est_Total_Years_Education_30km <- rd_est(formula = Total_Years_Education ~ dist_concess_bord_cen_km_alternative | gender + age + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = 30, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l", kernel= "triangular")
+summary(Rd_est_Total_Years_Education_30km)
+
+
+Rd_est_Literacy_adjusted_optimal <- rd_est(formula = Literacy_adjusted ~ dist_concess_bord_cen_km_alternative | gender + age + age_square + Dummy_Survey_Year + Brabanta +  Elisabetha + Flandria + Lusanga, data = Unco_DS_final, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Literacy_adjusted_optimal)
+
+
+Rd_est_Literacy_adjusted_60km <- rd_est(formula = Literacy_adjusted ~ dist_concess_bord_cen_km_alternative | gender + age + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = 60, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Literacy_adjusted_60km)
+
+Rd_est_Literacy_adjusted_30km <- rd_est(formula = Literacy_adjusted ~ dist_concess_bord_cen_km_alternative | gender + age + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = 30, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Literacy_adjusted_30km)
+
 detach(Unco_DS_final)
 
 
 
-Model_Summary_Rd_est_results <- list("RDD1" = Rd_est_add_bandwidth_20km, "RDD2" = Rd_est_add_bandwidth_25km, "RDD3"= Rd_est_add_bandwidth_35km, "RDD4" = Rd_est_add_bandwidth_40km, "RDD5" = Rd_est_add_bandwidth_45km, "RDD6" = Rd_est_add_bandwidth_50km, "RDD7" =Rd_est_add_bandwidth_55km)
+#Adding further information to the table.
+Add_info_RDD <- tribble( ~term, ~OLS,  ~OLS, ~OLS, ~OLS,~OLS, ~OLS,
+                'Bandwidth Choice', 'Optimal','Wide','Narrow','Optimal','Wide','Narrow',    
+                'Std.Errors','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster',
+                'Fixed Effects', 'X', 'X', 'X', 'X','X', 'X',
+                'Total Number Clusters', '84', '72', '27', '78', '72','27',
+                'Clusters within Con. Area', '23', '23','9', '23', '23','9')
+attr(Add_info_RDD, 'position') <- c(5,7,8,9,10)
 
-modelsummary(Model_Summary_Rd_est_results, fmt = 3, title = "RDD Wealth Factor Score (additional Bandwidths)", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "gt")
 
 
-RDD_Unco_final_table_Wealth <- modelsummary(Model_Summary_Rd_est_results, fmt = 3, title = "RDD Wealth Factor Score Estimates for Additional Bandwidths using a Rectangular Kernel", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "latex") %>%
- add_header_above(c(" " = 1, "Wealth Factor Score " = 7))  %>% kable_styling(latex_options = c( "scale_down","hold_position"))
-
-kableExtra::save_kable(RDD_Unco_final_table_Wealth, file = "Unco_Wealth_Factor_Score_additional_bandwidths_rectangular_table.tex")
 
 
+Model_Summary_Rd_est_results <- list("RDD1" = Rd_est_Total_Years_Education_optimal, "RDD2" = Rd_est_Total_Years_Education_60km,"RDD3"= Rd_est_Total_Years_Education_30km, "RDD4" = Rd_est_Literacy_adjusted_optimal, "RDD5" = Rd_est_Literacy_adjusted_60km, "RDD6" =Rd_est_Literacy_adjusted_30km)
+
+modelsummary(Model_Summary_Rd_est_results, fmt = 4, title = "RDD Education (Alternative Concession Centers)", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "gt")
+
+
+RDD_Unco_final_table_Education <- modelsummary(Model_Summary_Rd_est_results, fmt = 4, title = "RDD Education  (Alternative Concession Centers)", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "latex") %>%
+ add_header_above(c(" " = 1, "Years of Education " = 3, "Literacy" = 3))  %>% kable_styling(latex_options = c( "scale_down","hold_position"))
+
+kableExtra::save_kable(RDD_Unco_final_table_Education, file = "Unco_Education_final_table_alternative_centers.tex")
 ```
 
 
 
 ```{r}
+#Checking the number of clusters inside the concessions when changing the bandwidth. 
 
-######################################################################################################################
-#RD estimates for Total Years of Education (Additional Bandwiths) with a rectangular kernel.
-######################################################################################################################
+Unco_DS_final_optimal_1 <- Unco_DS_final %>% 
+  filter(dist_concess_bord_km_alternative < Rd_est_Total_Years_Education_optimal$bw[2])
+Unco_DS_final_optimal_1 %>%   group_by(within.con) %>%
+  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+Unco_DS_final_optimal_1 %>% 
+summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+
+Unco_DS_final_optimal_2 <- Unco_DS_final %>% 
+  filter(dist_concess_bord_km_alternative < Rd_est_Literacy_adjusted_optimal$bw[2])
+Unco_DS_final_optimal_2 %>%   group_by(within.con) %>%
+  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+Unco_DS_final_optimal_2 %>% 
+summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+
+```
+
+
+
+
+```{r}
+###########################################################################################################################################
+#RD estimates for Height/Age Percentile (Women) and Height/Age Percentile (Children)  (optimal as well as fixed bandwidth of 60km and 30km)
+#Now for alternative circle centers
+###########################################################################################################################################
+
+
 attach(Unco_DS_final)
+Rd_est_Height_Age_Women_optimal <- rd_est(formula = Height.Age_Percentile_adj ~ dist_concess_bord_cen_km_alternative |  age + age_square  + Dummy_Survey_Year + Brabanta +  Elisabetha + Flandria + Lusanga, data = Unco_DS_final, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l", verbose = FALSE)
+summary(Rd_est_Height_Age_Women_optimal)
 
-bw <- c(20,25,35,40,45,50,55)
-for(i in 1:length(bw)){
-model <- paste("Rd_est_add_bandwidth_",bw[i],"km", sep="")
-m<- rd_est(formula = Total_Years_Education~ dist_concess_bord_cen_km | gender + age + age_square + Dummy_Survey_Year + Brabanta +  Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = bw[i], cluster = DHS_Cluster_adj, less= TRUE, t.design = "l", verbose = FALSE, kernel= "triangular")
-assign(model,m)
-}
+
+Rd_est_Height_Age_Women_60km <- rd_est(formula = Height.Age_Percentile_adj ~ dist_concess_bord_cen_km_alternative |  age + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = 60, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l")
+summary(Rd_est_Height_Age_Women_60km)
+
+Rd_est_Height_Age_Women_30km <- rd_est(formula = Height.Age_Percentile_adj ~ dist_concess_bord_cen_km_alternative |  age + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = 30, cluster = DHS_Cluster_adj, less= TRUE, t.design = "l", kernel = "triangular")
+summary(Rd_est_Height_Age_Women_30km)
 detach(Unco_DS_final)
 
+attach (DHS_Children_final)
+Rd_est_Height_Age_Children_optimal <- rd_est(formula = Height.Age_Percentile_adj ~ dist_concess_bord_cen_km_alternative | Child_gender + Child_Age_months + age_square + Dummy_Survey_Year + Brabanta +  Elisabetha + Flandria + Lusanga, data = DHS_Children_final, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Height_Age_Children_optimal)
 
+Rd_est_Height_Age_Children_60km <- rd_est(formula = Height.Age_Percentile_adj ~ dist_concess_bord_cen_km_alternative |  Child_gender + Child_Age_months + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = DHS_Children_final, bw = 60, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l")
+summary(Rd_est_Height_Age_Children_60km)
 
-Model_Summary_Rd_est_results <- list("RDD1" = Rd_est_add_bandwidth_20km, "RDD2" = Rd_est_add_bandwidth_25km, "RDD3"= Rd_est_add_bandwidth_35km, "RDD4" = Rd_est_add_bandwidth_40km, "RDD5" = Rd_est_add_bandwidth_45km, "RDD6" = Rd_est_add_bandwidth_50km, "RDD7" =Rd_est_add_bandwidth_55km)
-
-modelsummary(Model_Summary_Rd_est_results, fmt = 3, title = "RDD Years of Education (additional Bandwidths)", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "gt")
-
-
-RDD_Unco_final_table_Wealth <- modelsummary(Model_Summary_Rd_est_results, fmt = 3, title = "RDD Years of Education Estimates for Additional Bandwidths using a Rectangular Kernel", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "latex") %>%
- add_header_above(c(" " = 1, "Total Number of Years of Education" = 7))  %>% kable_styling(latex_options = c( "scale_down","hold_position"))
-
-kableExtra::save_kable(RDD_Unco_final_table_Wealth, file = "Unco_Total_Years_Education_additional_bandwidths_rectangular_table.tex")
-
-
-```
-
-
-```{r}
-
-######################################################################################################################
-#RD estimates for Literacy (Additional Bandwiths) with a rectangular kernel.
-######################################################################################################################
-attach(Unco_DS_final)
-
-bw <- c(20,25,35,40,45,50,55)
-for(i in 1:length(bw)){
-model <- paste("Rd_est_add_bandwidth_",bw[i],"km", sep="")
-m<- rd_est(formula = Literacy_adjusted ~ dist_concess_bord_cen_km | gender + age + age_square + Dummy_Survey_Year + Brabanta +  Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = bw[i], cluster = DHS_Cluster_adj, less= TRUE, t.design = "l", verbose = FALSE, kernel= "triangular")
-assign(model,m)
-}
-detach(Unco_DS_final)
-
-
-
-Model_Summary_Rd_est_results <- list("RDD1" = Rd_est_add_bandwidth_20km, "RDD2" = Rd_est_add_bandwidth_25km, "RDD3"= Rd_est_add_bandwidth_35km, "RDD4" = Rd_est_add_bandwidth_40km, "RDD5" = Rd_est_add_bandwidth_45km, "RDD6" = Rd_est_add_bandwidth_50km, "RDD7" =Rd_est_add_bandwidth_55km)
-
-modelsummary(Model_Summary_Rd_est_results, fmt = 3, title = "RDD Literacy (additional Bandwidths)", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "gt")
-
-
-RDD_Unco_final_table_Wealth <- modelsummary(Model_Summary_Rd_est_results, fmt = 3, title = "RDD Literacy Estimates for Additional Bandwidths using a Rectangular Kernel", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "latex") %>%
- add_header_above(c(" " = 1, "Literacy" = 7))  %>% kable_styling(latex_options = c( "scale_down","hold_position"))
-
-kableExtra::save_kable(RDD_Unco_final_table_Wealth, file = "Unco_Literacy_additional_bandwidths_rectanglar_table.tex")
-
-
-```
-
-
-
-```{r}
-
-######################################################################################################################
-#RD estimates for Height/Age Percentile for Women (Additional Bandwidths) with a rectangular kernel.
-######################################################################################################################
-attach(Unco_DS_final)
-
-bw <- c(20,25,35,40,45,50,55)
-for(i in 1:length(bw)){
-model <- paste("Rd_est_add_bandwidth_",bw[i],"km", sep="")
-m<- rd_est(formula = Height.Age_Percentile_adj ~ dist_concess_bord_cen_km | age + age_square + Dummy_Survey_Year + Brabanta +  Elisabetha + Flandria + Lusanga, data = Unco_DS_final, bw = bw[i], cluster = DHS_Cluster_adj, less= TRUE, t.design = "l", verbose = FALSE, kernel = "rectangular")
-assign(model,m)
-}
-detach(Unco_DS_final)
-
-
-
-Model_Summary_Rd_est_results <- list("RDD1" = Rd_est_add_bandwidth_20km, "RDD2" = Rd_est_add_bandwidth_25km, "RDD3"= Rd_est_add_bandwidth_35km, "RDD4" = Rd_est_add_bandwidth_40km, "RDD5" = Rd_est_add_bandwidth_45km, "RDD6" = Rd_est_add_bandwidth_50km, "RDD7" =Rd_est_add_bandwidth_55km)
-
-modelsummary(Model_Summary_Rd_est_results, fmt = 3, title = "RDD Height/Age Percentile for Women (additional Bandwidths)", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "gt")
-
-
-RDD_Unco_final_table_Wealth <- modelsummary(Model_Summary_Rd_est_results, fmt = 3, title = "RDD Height/Age Percentile Estimates for Women with Additional Bandwidths using a Rectangular Kernel", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "latex") %>%
- add_header_above(c(" " = 1, "Height/Age Percentile for Women" = 7))  %>% kable_styling(latex_options = c( "scale_down","hold_position"))
-
-kableExtra::save_kable(RDD_Unco_final_table_Wealth, file = "Unco_HAP_Women_additional_bandwidths_rectanglar_table.tex")
-
-
-```
-
-
-```{r}
-
-######################################################################################################################
-#RD estimates for Wealth Factor Score (additional Bandwidths) with a rectangular kernel.
-######################################################################################################################
-attach(DHS_Children_final)
-
-bw <- c(20,25,35,40,45,50,55)
-for(i in 1:length(bw)){
-model <- paste("Rd_est_add_bandwidth_",bw[i],"km", sep="")
-m<- rd_est(formula = Height.Age_Percentile_adj ~ dist_concess_bord_cen_km | Child_gender + Child_Age_months + age_square + Dummy_Survey_Year + Brabanta +  Elisabetha + Flandria + Lusanga, data = DHS_Children_final, bw = bw[i], cluster = DHS_Cluster_adj, less= TRUE, t.design = "l", verbose = FALSE, kernel =)
-assign(model,m)
-}
+Rd_est_Height_Age_Children_30km <- rd_est(formula = Height.Age_Percentile_adj ~ dist_concess_bord_cen_km_alternative |  Child_gender + Child_Age_months + age_square + Dummy_Survey_Year + Brabanta + Elisabetha + Flandria + Lusanga, data = DHS_Children_final, bw = 30, cluster = DHS_Cluster_adj, less = TRUE, t.design = "l", kernel ="triangular")
+summary(Rd_est_Height_Age_Children_30km)
 detach(DHS_Children_final)
 
 
 
-Model_Summary_Rd_est_results <- list("RDD1" = Rd_est_add_bandwidth_20km, "RDD2" = Rd_est_add_bandwidth_25km, "RDD3"= Rd_est_add_bandwidth_35km, "RDD4" = Rd_est_add_bandwidth_40km, "RDD5" = Rd_est_add_bandwidth_45km, "RDD6" = Rd_est_add_bandwidth_50km, "RDD7" =Rd_est_add_bandwidth_55km)
 
-modelsummary(Model_Summary_Rd_est_results, fmt = 3, title = "RDD Height/Age Percentile for Children (additional Bandwidths)", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "gt")
+#Adding further information to the table.
+Add_info_RDD <- tribble( ~term, ~OLS,  ~OLS, ~OLS, ~OLS, ~OLS, ~OLS,
+                'Bandwidth Choice', 'Optimal','Wide','Narrow','Optimal','Wide','Narrow',    
+                'Std.Errors','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster','DHS Cluster',
+                'Fixed Effects', 'X', 'X', 'X', 'X','X', 'X',
+                'Total Number Clusters', '44', '72','27','75', '72','27',
+                'Clusters within Con. Area', '16','23','9','23', '23','9')
+attr(Add_info_RDD, 'position') <- c(5,7,8,9,10)
 
 
-RDD_Unco_final_table_Wealth <- modelsummary(Model_Summary_Rd_est_results, fmt = 3, title = "RDD Height/Age Percentile for Children Estimates with Additional Bandwidths using a Rectangular Kernel", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "latex") %>%
- add_header_above(c(" " = 1, "Height/Age Percentile for Children" = 7))  %>% kable_styling(latex_options = c( "scale_down","hold_position"))
-
-kableExtra::save_kable(RDD_Unco_final_table_Wealth, file = "Unco_HAP_Children_additional_bandwidths_rectangular_table.tex")
 
 
+
+Model_Summary_Rd_est_results <- list("RDD1" = Rd_est_Height_Age_Women_optimal, "RDD2" = Rd_est_Height_Age_Women_60km, "RDD3" = Rd_est_Height_Age_Women_30km, "RDD4" = Rd_est_Height_Age_Children_optimal, "RDD5" = Rd_est_Height_Age_Children_60km, "RDD6"= Rd_est_Height_Age_Children_30km)
+
+modelsummary(Model_Summary_Rd_est_results, fmt = 4, title = "RDD Health  (Alternative Concession Centers)", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "gt")
+
+
+RDD_Unco_final_table_Health <- modelsummary(Model_Summary_Rd_est_results, fmt = 4, title = "RDD Health  (Alternative Concession Centers)", estimate = "estimate", stars = TRUE, coef_map = Var_Structure, gof_map = gm, add_rows = Add_info_RDD, notes = list("Test for note1"),  output = "latex") %>%
+ add_header_above(c(" " = 1, "Height/ Age Percentile (Women)" = 3, "Height/ Age Percentile (Children)" = 3))  %>% kable_styling(latex_options = c( "scale_down","hold_position"))
+
+kableExtra::save_kable(RDD_Unco_final_table_Health, file = "Unco_Health_final_table_alterntive_centers.tex")
 ```
 
 
+```{r}
+#Checking the number of clusters inside the concessions when changing the bandwidth. 
 
+Unco_DS_final_optimal_1 <- Unco_DS_final %>% 
+  filter(dist_concess_bord_km_alternative < Rd_est_Height_Age_Women_optimal$bw[2])
+Unco_DS_final_optimal_1 %>%   group_by(within.con) %>%
+  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+Unco_DS_final_optimal_1 %>% 
+summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+Unco_DS_final_optimal_2 <- Unco_DS_final %>% 
+  filter(dist_concess_bord_km_alternative < Rd_est_Height_Age_Children_optimal$bw[2])
+Unco_DS_final_optimal_2 %>%   group_by(within.con) %>%
+  summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+Unco_DS_final_optimal_2 %>% 
+summarize(Number_Clusters = n_distinct(DHS_Cluster_adj))
+```
 
 
 
